@@ -40,7 +40,6 @@ typedef struct cwf_StringBuilder {
 } cwf_StringBuilder;
 
 #define CWF_SB_APPEND_BUF(sb, buf, size) CWF_DA_APPEND_MANY(sb, buf, size)
-
 #define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
 
 int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...);
@@ -51,12 +50,14 @@ typedef struct cwf_StringView {
 } cwf_StringView;
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count);
-
 cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim);
-
+cwf_StringView cwf_sv_trim_space(cwf_StringView sv);
+cwf_StringView cwf_sv_trim_space_left(cwf_StringView sv);
+cwf_StringView cwf_sv_trim_space_right(cwf_StringView sv);
 bool cwf_sv_eq(cwf_StringView sv, const char *str);
 
 #ifdef CWF_IMPLEMENTATION
+#include <ctype.h>
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count)
 {
@@ -110,6 +111,36 @@ int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
     return n;
 }
 
+cwf_StringView cwf_sv_trim_space(cwf_StringView sv)
+{
+    return cwf_sv_trim_space_left(cwf_sv_trim_space_right(sv));
+}
+
+cwf_StringView cwf_sv_trim_space_left(cwf_StringView sv)
+{
+    size_t i = 0;
+    while (i < sv.count && isspace(sv.items[i])) {
+        i += 1;
+    }
+
+    // Apparently if sv.items == 0 and i == 0 adding them
+    // together is an undefined behavior. According to
+    // clang's UndefinedBehaviorSanitizer at least.
+    if (i == 0) return sv;
+
+    return cwf_sv_from_parts(sv.items + i, sv.count - i);
+}
+
+cwf_StringView cwf_sv_trim_space_right(cwf_StringView sv)
+{
+    size_t i = 0;
+    while (i < sv.count && isspace(sv.items[sv.count - 1 - i])) {
+        i += 1;
+    }
+
+    return cwf_sv_from_parts(sv.items, sv.count - i);
+}
+
 #endif
 
 // =================================================================================================
@@ -125,13 +156,17 @@ typedef struct cwf_Headers {
     size_t count, capacity;
 } cwf_Headers;
 
+typedef struct cwf_Request {
+    cwf_Headers headers;
+} cwf_Request;
+
 typedef struct cwf_Response {
     const char *body;
     int code;
     cwf_Headers headers;
 } cwf_Response;
 
-typedef cwf_Response (*cwf_ApiHandler)();
+typedef cwf_Response (*cwf_ApiHandler)(cwf_Request);
 
 typedef struct _cwf_Endpoint {
     const char *method;
@@ -150,8 +185,8 @@ typedef struct cwf_App {
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
-void cwf_response_set_header(cwf_Response *response, const char *name, const char *value);
-const char *cwf_response_get_header(cwf_Response response, const char *name);
+void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
+const char *cwf_headers_get(cwf_Headers headers, const char *name);
 
 // =================================================================================================
 // Implementation
@@ -236,17 +271,36 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         cwf_StringView sv = cwf_sv_from_parts(buffer, bytes_read);
         cwf_StringView method = cwf_sv_chop_by_delim(&sv, ' ');
         cwf_StringView address = cwf_sv_chop_by_delim(&sv, ' ');
+        cwf_sv_chop_by_delim(&sv, '\n');
+
+        cwf_Request request = {0};
+        while (sv.count > 0) {
+            cwf_StringView value = cwf_sv_chop_by_delim(&sv, '\n');
+            cwf_StringView key = cwf_sv_chop_by_delim(&value, ':');
+
+            value = cwf_sv_trim_space(value);
+            key = cwf_sv_trim_space(key);
+            sv = cwf_sv_trim_space(sv);
+
+            // TODO replace malloc here
+            cwf_headers_set(
+                &request.headers,
+                strndup(key.items, key.count), strndup(value.items, value.count)
+            );
+
+            printf("%.*s -> %.*s\n", (int) key.count, key.items, (int) value.count, value.items);
+        }
 
         response_sb.count = 0;
         CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
             if (cwf_sv_eq(address, e->address) && cwf_sv_eq(method, e->method)) {
-                cwf_Response response_data = e->handler();
+                cwf_Response response_data = e->handler(request);
                 cwf_sb_appendf(&response_sb, "HTTP/2 %d\r\n", response_data.code);
 
                 size_t content_length = strlen(response_data.body);
                 cwf_sb_appendf(&response_sb, "content-length: %d\r\n", content_length + 1);
                 
-                const char *content_type = cwf_response_get_header(response_data, "content-type");
+                const char *content_type = cwf_headers_get(response_data.headers, "content-type");
                 if (content_type == NULL) content_type = "text/plain";
                 cwf_sb_appendf(&response_sb, "content-type: %s\r\n", content_type);
 
@@ -269,15 +323,15 @@ void cwf_app_run(cwf_App app, const char *address, int port)
     close(server_fd);
 }
 
-void cwf_response_set_header(cwf_Response *response, const char *name, const char *value)
+void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value)
 {
     cwf_Header header = {name, value};
-    CWF_DA_APPEND(&response->headers, header);
+    CWF_DA_APPEND(headers, header);
 }
 
-const char *cwf_response_get_header(cwf_Response response, const char *name)
+const char *cwf_headers_get(cwf_Headers headers, const char *name)
 {
-    CWF_DA_FOREACH (cwf_Header, h, &response.headers) {
+    CWF_DA_FOREACH (cwf_Header, h, &headers) {
         if (strcmp(name, h->name) == 0) {
             return h->value;
         }

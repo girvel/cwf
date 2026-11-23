@@ -2,14 +2,28 @@
 #define CWF_IMPLEMENTATION
 #include "cwf.h"
 
-cwf_Response api_get_hw()
+// FUTURE QUESTS
+// - autolowercase all header names when setting/getting
+// - api call-scoped arena (to replace buffer & leaking lowercase & some other places)
+
+char buffer[4096];
+
+cwf_Response api_get_hw(cwf_Request request)
 {
+    const char *user_agent = cwf_headers_get(request.headers, "User-Agent");
+    if (user_agent == NULL) user_agent = "unknown agent";
+
+    snprintf(
+        buffer, sizeof(buffer),
+        "<h1>Hello, %s!</h1>\r\n", user_agent
+    );
+
     cwf_Response response = {
       .code = 200,
-      .body = "<h1>Hello, world!</h1>\r\n",
+      .body = buffer,
     };
 
-    cwf_response_set_header(&response, "content-type", "text/html");
+    cwf_headers_set(&response.headers, "content-type", "text/html");
     return response;
 }
 
