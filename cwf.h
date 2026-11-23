@@ -116,9 +116,19 @@ int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
 // API
 // =================================================================================================
 
+typedef struct cwf_Header {
+    const char *name, *value;
+} cwf_Header;
+
+typedef struct cwf_Headers {
+    cwf_Header *items;
+    size_t count, capacity;
+} cwf_Headers;
+
 typedef struct cwf_Response {
     const char *body;
     int code;
+    cwf_Headers headers;
 } cwf_Response;
 
 typedef cwf_Response (*cwf_ApiHandler)();
@@ -140,6 +150,8 @@ typedef struct cwf_App {
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
+void cwf_response_set_header(cwf_Response *response, const char *name, const char *value);
+const char *cwf_response_get_header(cwf_Response response, const char *name);
 
 // =================================================================================================
 // Implementation
@@ -229,10 +241,16 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
             if (cwf_sv_eq(address, e->address) && cwf_sv_eq(method, e->method)) {
                 cwf_Response response_data = e->handler();
-                size_t content_length = strlen(response_data.body);
                 cwf_sb_appendf(&response_sb, "HTTP/2 %d\r\n", response_data.code);
-                cwf_sb_appendf(&response_sb, "Content-Type: text/plain\r\n");
-                cwf_sb_appendf(&response_sb, "Content-Length: %d\r\n\r\n", content_length + 1);
+
+                size_t content_length = strlen(response_data.body);
+                cwf_sb_appendf(&response_sb, "content-length: %d\r\n", content_length + 1);
+                
+                const char *content_type = cwf_response_get_header(response_data, "content-type");
+                if (content_type == NULL) content_type = "text/plain";
+                cwf_sb_appendf(&response_sb, "content-type: %s\r\n", content_type);
+
+                cwf_sb_appendf(&response_sb, "\r\n");
                 CWF_SB_APPEND_BUF(&response_sb, response_data.body, content_length + 1);
                 goto found;
             }
@@ -249,6 +267,22 @@ void cwf_app_run(cwf_App app, const char *address, int port)
     }
 
     close(server_fd);
+}
+
+void cwf_response_set_header(cwf_Response *response, const char *name, const char *value)
+{
+    cwf_Header header = {name, value};
+    CWF_DA_APPEND(&response->headers, header);
+}
+
+const char *cwf_response_get_header(cwf_Response response, const char *name)
+{
+    CWF_DA_FOREACH (cwf_Header, h, &response.headers) {
+        if (strcmp(name, h->name) == 0) {
+            return h->value;
+        }
+    }
+    return NULL;
 }
 
 #endif

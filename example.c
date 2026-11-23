@@ -4,10 +4,13 @@
 
 cwf_Response api_get_hw()
 {
-    return (cwf_Response) {
+    cwf_Response response = {
       .code = 200,
-      .body = "Hello, world!\r\n",
+      .body = "<h1>Hello, world!</h1>\r\n",
     };
+
+    cwf_response_set_header(&response, "content-type", "text/html");
+    return response;
 }
 
 int main()
