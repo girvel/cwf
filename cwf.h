@@ -1,8 +1,88 @@
+/* CWF stands for C Web Framework */
+
 #ifndef CWF_H
 #define CWF_H
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
+// =================================================================================================
+// Utility functions
+// =================================================================================================
+
+#define CWF_DA_RESERVE(da, min_capacity) do { \
+    if ((min_capacity) >= (da)->capacity) { \
+        if ((da)->capacity == 0) (da)->capacity = 16; \
+        while ((min_capacity) > (da)->capacity) (da)->capacity *= 2; \
+        (da)->items = realloc((da)->items, sizeof(*(da)->items) * (da)->capacity); \
+    } \
+} while (0)
+
+#define CWF_DA_APPEND(da, item) do { \
+    CWF_DA_RESERVE((da), (da)->count + 1); \
+    (da)->items[(da)->count++] = (item); \
+} while (0)
+
+#define CWF_DA_APPEND_MANY(da, new_items, new_items_count) do { \
+    CWF_DA_RESERVE((da), (da)->count + (new_items_count)); \
+    memcpy((da)->items + (da)->count, (new_items), (new_items_count) * sizeof(*(da)->items)); \
+    (da)->count += (new_items_count); \
+} while (0)
+
+#define CWF_DA_FOREACH(Type, it, da) \
+    for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+
+typedef struct cwf_StringBuilder {
+    char *items;
+    size_t count, capacity;
+} cwf_StringBuilder;
+
+#define CWF_SB_APPEND_BUF(sb, buf, size) CWF_DA_APPEND_MANY(sb, buf, size)
+
+#define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
+
+typedef struct cwf_StringView {
+    const char *items;
+    size_t count;
+} cwf_StringView;
+
+cwf_StringView cwf_sv_from_parts(const char *items, size_t count);
+
+cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim);
+
+#ifdef CWF_IMPLEMENTATION
+
+cwf_StringView cwf_sv_from_parts(const char *items, size_t count)
+{
+    cwf_StringView result;
+    result.items = items;
+    result.count = count;
+    return result;
+}
+
+cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim)
+{
+    size_t i = 0;
+    while (i < sv->count && sv->items[i] != delim) i += 1;
+
+    cwf_StringView result = cwf_sv_from_parts(sv->items, i);
+
+    if (i < sv->count) {
+        sv->count -= i + 1;
+        sv->items += i + 1;
+    } else {
+        sv->count -= i;
+        sv->items += i;
+    }
+
+    return result;
+}
+
+#endif
+
+// =================================================================================================
+// API
+// =================================================================================================
 
 typedef struct cwf_Response {
     const char *body;
@@ -28,28 +108,15 @@ typedef struct cwf_App {
 void cwf_app_route(cwf_App *app, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
 
-#define CWF_DA_RESERVE(da, min_capacity) do { \
-    if ((min_capacity) >= (da)->capacity) { \
-        if ((da)->capacity == 0) (da)->capacity = 16; \
-        while ((min_capacity) > (da)->capacity) (da)->capacity *= 2; \
-        (da)->items = realloc((da)->items, sizeof(*(da)->items) * (da)->capacity); \
-    } \
-} while (0)
-
-#define CWF_DA_APPEND(da, item) do { \
-    CWF_DA_RESERVE((da), (da)->count + 1); \
-    (da)->items[(da)->count++] = (item); \
-} while (0)
-
-#define CWF_DA_FOREACH(Type, it, da) \
-    for (Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+// =================================================================================================
+// Implementation
+// =================================================================================================
 
 #ifdef CWF_IMPLEMENTATION
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <assert.h>
-#include <string.h>
 
 void cwf_app_route(cwf_App *app, const char *endpoint, cwf_ApiHandler handler)
 {
@@ -90,9 +157,8 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         exit(1);
     }
 
-    printf("Listening on %s:%i\n", address, port);
+    printf("Listening on %s:%i\n\n", address, port);
 
-    char buffer[1024] = {0};
     socklen_t addrlen = sizeof(address);
     while (1) {
         int client_fd = accept(server_fd, (struct sockaddr *)&addr, &addrlen);
@@ -102,6 +168,8 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             exit(1);
         }
 
+        // TODO string building
+        char buffer[4096] = {0};
         ssize_t bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
         if (bytes_read < 0) {
             perror("recv failed");
@@ -110,13 +178,29 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             exit(1);
         }
 
-        if (bytes_read > 0) {
-            buffer[bytes_read] = '\0';
-            printf("Client says: %s\n", buffer);
-            const char *reply = "Hello dude";
-            send(client_fd, reply, strlen(reply), 0);
-        }
+        if (bytes_read == 0) goto finish;
 
+        buffer[bytes_read] = '\0';
+        printf("> REQUEST\n%s", buffer);
+
+        cwf_StringView sv = cwf_sv_from_parts(buffer, bytes_read);
+        cwf_StringView method = cwf_sv_chop_by_delim(&sv, ' ');
+        cwf_StringView address = cwf_sv_chop_by_delim(&sv, ' ');
+
+        char *response;
+        CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
+            if (strncmp(e->address, address.items, strlen(e->address)) == 0) {
+                response = "HTTP/2 200\n";
+                goto found;
+            }
+        }
+        response = "HTTP/2 404\n";
+
+    found:
+        printf("> RESPONSE\n%s\n", response);
+        send(client_fd, response, strlen(response), 0);
+
+    finish:
         close(client_fd);
     }
 

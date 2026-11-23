@@ -14,7 +14,7 @@ int main()
 {
     cwf_App app = {0};
     cwf_app_route(&app, "/api/get", api_get_hw);
-    cwf_app_run(app, "localhost", 8080);
+    cwf_app_run(app, "localhost", 8000);
     printf("Program finished.\n");
     return 0;
 }
