@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdbool.h>
 
 // =================================================================================================
 // Utility functions
@@ -53,6 +54,8 @@ cwf_StringView cwf_sv_from_parts(const char *items, size_t count);
 
 cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim);
 
+bool cwf_sv_eq(cwf_StringView sv, const char *str);
+
 #ifdef CWF_IMPLEMENTATION
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count)
@@ -79,6 +82,13 @@ cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim)
     }
 
     return result;
+}
+
+bool cwf_sv_eq(cwf_StringView sv, const char *str)
+{
+    size_t len = strlen(str);
+    if (len != sv.count) return false;
+    return strncmp(sv.items, str, len) == 0;
 }
 
 int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
@@ -114,6 +124,7 @@ typedef struct cwf_Response {
 typedef cwf_Response (*cwf_ApiHandler)();
 
 typedef struct _cwf_Endpoint {
+    const char *method;
     const char *address;
     cwf_ApiHandler handler;
 } _cwf_Endpoint;
@@ -127,7 +138,7 @@ typedef struct cwf_App {
     _cwf_Endpoints _endpoints;
 } cwf_App;
 
-void cwf_app_route(cwf_App *app, const char *endpoint, cwf_ApiHandler handler);
+void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
 
 // =================================================================================================
@@ -140,9 +151,13 @@ void cwf_app_run(cwf_App app, const char *address, int port);
 #include <unistd.h>
 #include <assert.h>
 
-void cwf_app_route(cwf_App *app, const char *endpoint, cwf_ApiHandler handler)
+void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler)
 {
-    _cwf_Endpoint e = {endpoint, handler};
+    _cwf_Endpoint e = {
+        .method = method,
+        .address = endpoint,
+        .handler = handler,
+    };
     CWF_DA_APPEND(&app->_endpoints, e);
 }
 
@@ -212,7 +227,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
         response_sb.count = 0;
         CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
-            if (strncmp(e->address, address.items, strlen(e->address)) == 0) {
+            if (cwf_sv_eq(address, e->address) && cwf_sv_eq(method, e->method)) {
                 cwf_Response response_data = e->handler();
                 size_t content_length = strlen(response_data.body);
                 cwf_sb_appendf(&response_sb, "HTTP/2 %d\r\n", response_data.code);
