@@ -6,7 +6,7 @@ cwf_Response api_get_hw()
 {
     return (cwf_Response) {
       .code = 200,
-      .body = "Hello, world!",
+      .body = "Hello, world!\r\n",
     };
 }
 

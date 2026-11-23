@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 // =================================================================================================
 // Utility functions
@@ -41,6 +42,8 @@ typedef struct cwf_StringBuilder {
 
 #define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
 
+int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...);
+
 typedef struct cwf_StringView {
     const char *items;
     size_t count;
@@ -76,6 +79,25 @@ cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim)
     }
 
     return result;
+}
+
+int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    CWF_DA_RESERVE(sb, sb->count + n + 1);
+    char *dest = sb->items + sb->count;
+    va_start(args, fmt);
+    vsnprintf(dest, n+1, fmt, args);
+    va_end(args);
+
+    sb->count += n;
+
+    return n;
 }
 
 #endif
@@ -159,6 +181,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
     printf("Listening on %s:%i\n\n", address, port);
 
+    cwf_StringBuilder response_sb = {0};
     socklen_t addrlen = sizeof(address);
     while (1) {
         int client_fd = accept(server_fd, (struct sockaddr *)&addr, &addrlen);
@@ -187,18 +210,24 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         cwf_StringView method = cwf_sv_chop_by_delim(&sv, ' ');
         cwf_StringView address = cwf_sv_chop_by_delim(&sv, ' ');
 
-        char *response;
+        response_sb.count = 0;
         CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
             if (strncmp(e->address, address.items, strlen(e->address)) == 0) {
-                response = "HTTP/2 200\n";
+                cwf_Response response_data = e->handler();
+                size_t content_length = strlen(response_data.body);
+                cwf_sb_appendf(&response_sb, "HTTP/2 %d\r\n", response_data.code);
+                cwf_sb_appendf(&response_sb, "Content-Type: text/plain\r\n");
+                cwf_sb_appendf(&response_sb, "Content-Length: %d\r\n\r\n", content_length + 1);
+                CWF_SB_APPEND_BUF(&response_sb, response_data.body, content_length + 1);
                 goto found;
             }
         }
-        response = "HTTP/2 404\n";
+        cwf_sb_appendf(&response_sb, "HTTP/2 404\r\n");
+        CWF_SB_APPEND_NULL(&response_sb);
 
     found:
-        printf("> RESPONSE\n%s\n", response);
-        send(client_fd, response, strlen(response), 0);
+        printf("> RESPONSE\n%s\n", response_sb.items);
+        send(client_fd, response_sb.items, response_sb.count, 0);
 
     finish:
         close(client_fd);
