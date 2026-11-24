@@ -3,13 +3,12 @@
 #include "cwf.h"
 
 // FUTURE QUESTS
-// - autolowercase all header names when setting/getting
 
 char buffer[4096];
 
 cwf_Response api_get_hw(cwf_Request request)
 {
-    const char *user_agent = cwf_headers_get(request.headers, "User-Agent");
+    const char *user_agent = cwf_headers_get(request.headers, "user-agent");
     if (user_agent == NULL) user_agent = "unknown agent";
 
     snprintf(

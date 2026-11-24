@@ -46,6 +46,7 @@ void cwf_arena_free(cwf_Arena *a);
 void *cwf_alloc(size_t capacity);
 void *cwf_realloc(void *ptr, size_t prev_capacity, size_t next_capacity);
 void cwf_free(void *ptr);
+char *cwf_strdup(const char *source);
 
 #define CWF_DA_RESERVE(da, min_capacity) do { \
     if ((min_capacity) >= (da)->capacity) { \
@@ -204,6 +205,14 @@ void *cwf_alloc(size_t capacity)
 void *cwf_realloc(void *ptr, size_t prev_capacity, size_t next_capacity)
 {
     return cwf_arena_realloc(&cwf_arena, ptr, prev_capacity, next_capacity);
+}
+
+char *cwf_strdup(const char *source)
+{
+    size_t len = strlen(source);
+    char *result = cwf_alloc(len + 1);
+    strcpy(result, source);
+    return result;
 }
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count)
@@ -483,7 +492,9 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
 void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value)
 {
-    cwf_Header header = {name, value};
+    char *name_lower = cwf_alloc(strlen(name) + 1);
+    for (size_t i = 0; name[i] != '\0'; i++) name_lower[i] = tolower(name[i]);
+    cwf_Header header = {name_lower, cwf_strdup(value)};
     CWF_DA_APPEND(headers, header);
 }
 
