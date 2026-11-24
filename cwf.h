@@ -448,6 +448,7 @@ void cwf_app_run(cwf_App app, const char *address, int port);
 void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
 void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
 const char *cwf_headers_get(cwf_Headers headers, const char *name);
+cwf_Response cwf_response_found(const char *uri);
 
 // =================================================================================================
 // [SECTION] Implementation
@@ -550,14 +551,16 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
             if (cwf_sv_eq(address, e->address) && cwf_sv_eq(method, e->method)) {
                 cwf_Response response_data = e->handler(request);
-                cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
-
-                cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", response_data.body.count);
-                
                 const char *content_type = cwf_headers_get(response_data.headers, "content-type");
-                if (content_type == NULL) content_type = "text/plain";
-                cwf_sb_appendf(&response_sb, "content-type: %s\r\n", content_type);
+                if (content_type == NULL) {
+                    cwf_headers_set(&response_data.headers, "content-type", "text/plain");
+                }
 
+                cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
+                cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", response_data.body.count);
+                CWF_DA_FOREACH (cwf_Header, h, &response_data.headers) {
+                    cwf_sb_appendf(&response_sb, "%s: %s\r\n", h->name, h->value);
+                }
                 cwf_sb_appendf(&response_sb, "\r\n");
                 cwf_sb_append_sv(&response_sb, response_data.body);
                 goto found;
@@ -601,6 +604,18 @@ const char *cwf_headers_get(cwf_Headers headers, const char *name)
         }
     }
     return NULL;
+}
+
+cwf_Response cwf_response_found(const char *uri)
+{
+    cwf_Response result = {
+        .code = 302,
+        .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Found</a>.\r\n", uri)),
+    };
+    
+    cwf_headers_set(&result.headers, "content-type", "text/html");
+    cwf_headers_set(&result.headers, "location", uri);
+    return result;
 }
 
 #endif // CWF_IMPLEMENTATION

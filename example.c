@@ -4,12 +4,13 @@
 
 // FUTURE QUESTS
 // - serve a PNG file
-// - redirect favicon.ico -> favicon.png
+// - cwf_headers_set does not overwrite
 // - redirect endpoint/ -> endpoint and back
 // - serve static files from a directory
 // - path arguments
 // - query arguments
 // - POST, JSON?
+// - Host a real website
 
 cwf_Response api_index(cwf_Request request)
 {
@@ -42,11 +43,18 @@ cwf_Response api_favicon(cwf_Request request)
     return response;
 }
 
+cwf_Response api_favicon_redirect(cwf_Request request)
+{
+    (void)request;
+    return cwf_response_found("/favicon.png");
+}
+
 int main()
 {
     cwf_App app = {0};
     cwf_app_route(&app, "GET", "/", api_index);
     cwf_app_route(&app, "GET", "/favicon.png", api_favicon);
+    cwf_app_route(&app, "GET", "/favicon.ico", api_favicon_redirect);
     cwf_app_run(app, "localhost", 8000);
     printf("Program finished.\n");
     return 0;
