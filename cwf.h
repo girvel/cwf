@@ -103,6 +103,11 @@ char *cwf_sv_strdup(cwf_StringView sv);
 #define SV_FMT "%.*s"
 #define SV_ARG(sv) (int)(sv).count, (sv).items
 
+static inline cwf_StringView sv_cstr(const char *source)
+{
+    return (cwf_StringView) {source, strlen(source)};
+}
+
 #ifdef CWF_IMPLEMENTATION
 #include <ctype.h>
 #include <assert.h>
@@ -377,7 +382,8 @@ typedef struct cwf_App {
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
-void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
+void cwf_headers_set(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
+void cwf_headers_set_cstr(cwf_Headers *headers, const char *name, const char *value);
 const char *cwf_headers_get(cwf_Headers headers, const char *name);
 
 // =================================================================================================
@@ -475,8 +481,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             key = cwf_sv_trim_space(key);
             sv = cwf_sv_trim_space(sv);
 
-            // TODO that's disgusting
-            cwf_headers_set(&request.headers, cwf_sv_strdup(key), cwf_sv_strdup(value));
+            cwf_headers_set(&request.headers, key, value);
         }
 
         response_sb.count = 0;
@@ -513,14 +518,18 @@ void cwf_app_run(cwf_App app, const char *address, int port)
     close(server_fd);
 }
 
-void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value)
+void cwf_headers_set(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
 {
-    size_t name_len = strlen(name);
-    char *name_lower = cwf_alloc(name_len + 1);
-    for (size_t i = 0; name[i] != '\0'; i++) name_lower[i] = tolower(name[i]);
-    name_lower[name_len] = '\0';
-    cwf_Header header = {name_lower, cwf_strdup(value)};
+    char *name_lower = cwf_alloc(name.count + 1);
+    for (size_t i = 0; i < name.count; i++) name_lower[i] = tolower(name.items[i]);
+    name_lower[name.count] = '\0';
+    cwf_Header header = {name_lower, cwf_sv_strdup(value)};
     CWF_DA_APPEND(headers, header);
+}
+
+void cwf_headers_set_cstr(cwf_Headers *headers, const char *name, const char *value)
+{
+    cwf_headers_set(headers, sv_cstr(name), sv_cstr(value));
 }
 
 const char *cwf_headers_get(cwf_Headers headers, const char *name)
