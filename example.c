@@ -4,7 +4,6 @@
 
 // FUTURE QUESTS
 // - autolowercase all header names when setting/getting
-// - api call-scoped arena (to replace buffer & leaking lowercase & some other places)
 
 char buffer[4096];
 

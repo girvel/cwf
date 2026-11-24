@@ -155,6 +155,45 @@ void *cwf_arena_realloc(cwf_Arena *a, void *ptr, size_t prev_capacity, size_t ne
     return next_ptr;
 }
 
+cwf_ArenaMark cwf_arena_snapshot(cwf_Arena *a)
+{
+    cwf_ArenaMark result;
+    if (a->end == NULL) {
+        assert(a->begin == NULL);
+        result.region = NULL;
+        result.count = 0;
+    } else {
+        result.region = a->end;
+        result.count = a->end->count;
+    }
+    return result;
+}
+
+void cwf_arena_reset(cwf_Arena *a)
+{
+    for (cwf_ArenaRegion *r = a->begin; r != NULL; r = r->next) {
+        r->count = 0;
+    }
+    a->end = a->begin;
+}
+
+void cwf_arena_rewind(cwf_Arena *a, cwf_ArenaMark m)
+{
+    if (m.region == NULL) {
+        cwf_arena_reset(a);
+        return;
+    }
+
+    m.region->count = m.count;
+    for (cwf_ArenaRegion *r = m.region->next; r != NULL; r = r->next) {
+        r->count = 0;
+    }
+
+    a->end = m.region;
+}
+
+void cwf_arena_free(cwf_Arena *a);
+
 static cwf_Arena cwf_arena = {0};
 
 void *cwf_alloc(size_t capacity)
@@ -365,8 +404,10 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
     cwf_StringBuilder response_sb = {0};
     CWF_DA_RESERVE(&response_sb, 4096);
-    socklen_t addrlen = sizeof(address);
+    cwf_ArenaMark pre_request_baseline = cwf_arena_snapshot(&cwf_arena);
+
     while (1) {
+        socklen_t addrlen = sizeof(address);
         int client_fd = accept(server_fd, (struct sockaddr *)&addr, &addrlen);
         if (client_fd < 0) {
             perror("accept failed");
@@ -433,6 +474,8 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
     finish:
         close(client_fd);
+        printf("Arena last region count: %ld\n", cwf_arena.end->count);
+        cwf_arena_rewind(&cwf_arena, pre_request_baseline);
     }
 
     close(server_fd);
