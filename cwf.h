@@ -113,8 +113,60 @@ static inline cwf_StringView sv_cstr(const char *source)
 
 bool cwf_file_read(const char *path, cwf_StringBuilder *sb);
 
-// todo join two implementation ifdef, separate section for utility implementation
+// =================================================================================================
+// [SECTION] API
+// =================================================================================================
+
+typedef struct cwf_Header {
+    const char *name, *value;
+} cwf_Header;
+
+typedef struct cwf_Headers {
+    cwf_Header *items;
+    size_t count, capacity;
+} cwf_Headers;
+
+typedef struct cwf_Request {
+    cwf_Headers headers;
+} cwf_Request;
+
+typedef struct cwf_Response {
+    // May contain null terminators => cwf_StringView
+    cwf_StringView body;
+    int code;
+    cwf_Headers headers;
+} cwf_Response;
+
+typedef cwf_Response (*cwf_ApiHandler)(cwf_Request);
+
+typedef struct _cwf_Endpoint {
+    const char *method;
+    const char *address;
+    cwf_ApiHandler handler;
+} _cwf_Endpoint;
+
+typedef struct _cwf_Endpoints {
+    _cwf_Endpoint *items;
+    size_t count, capacity;
+} _cwf_Endpoints;
+
+typedef struct cwf_App {
+    _cwf_Endpoints _endpoints;
+} cwf_App;
+
+void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
+void cwf_app_run(cwf_App app, const char *address, int port);
+void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
+void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
+const char *cwf_headers_get(cwf_Headers headers, const char *name);
+cwf_Response cwf_response_found(const char *uri);
+
+// =================================================================================================
+// [SECTION] Utility implementation
+// =================================================================================================
+
 #ifdef CWF_IMPLEMENTATION
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <ctype.h>
 #include <assert.h>
@@ -400,62 +452,9 @@ defer:
     return result;
 }
 
-#endif // CWF_IMPLEMENTATION
-
-// =================================================================================================
-// [SECTION] API
-// =================================================================================================
-
-typedef struct cwf_Header {
-    const char *name, *value;
-} cwf_Header;
-
-typedef struct cwf_Headers {
-    cwf_Header *items;
-    size_t count, capacity;
-} cwf_Headers;
-
-typedef struct cwf_Request {
-    cwf_Headers headers;
-} cwf_Request;
-
-typedef struct cwf_Response {
-    // May contain null terminators => cwf_StringView
-    cwf_StringView body;
-    int code;
-    cwf_Headers headers;
-} cwf_Response;
-
-typedef cwf_Response (*cwf_ApiHandler)(cwf_Request);
-
-typedef struct _cwf_Endpoint {
-    const char *method;
-    const char *address;
-    cwf_ApiHandler handler;
-} _cwf_Endpoint;
-
-typedef struct _cwf_Endpoints {
-    _cwf_Endpoint *items;
-    size_t count, capacity;
-} _cwf_Endpoints;
-
-typedef struct cwf_App {
-    _cwf_Endpoints _endpoints;
-} cwf_App;
-
-void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
-void cwf_app_run(cwf_App app, const char *address, int port);
-void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
-void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
-const char *cwf_headers_get(cwf_Headers headers, const char *name);
-cwf_Response cwf_response_found(const char *uri);
-
 // =================================================================================================
 // [SECTION] Implementation
 // =================================================================================================
-
-#ifdef CWF_IMPLEMENTATION
-#include <arpa/inet.h>
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler)
 {
