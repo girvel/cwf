@@ -469,7 +469,7 @@ void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_A
 
 void cwf_app_run(cwf_App app, const char *address, int port)
 {
-    CWF_DA_FOREACH(_cwf_Endpoint, e, &app._endpoints) {
+    CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
         printf("GET %s\n", e->address);
     }
 
@@ -502,8 +502,6 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
     printf("Listening on %s:%i\n\n", address, port);
 
-    cwf_StringBuilder response_sb = {0};
-    CWF_DA_RESERVE(&response_sb, 4096);
     cwf_ArenaMark pre_request_baseline = cwf_arena_snapshot(&cwf_arena);
 
     while (1) {
@@ -547,7 +545,9 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             cwf_headers_set_sv(&request.headers, key, value);
         }
 
-        response_sb.count = 0;
+        cwf_StringBuilder response_sb = {0};
+        CWF_DA_RESERVE(&response_sb, 4096);
+
         CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
             if (cwf_sv_eq(address, e->address) && cwf_sv_eq(method, e->method)) {
                 cwf_Response response_data = e->handler(request);

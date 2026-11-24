@@ -3,7 +3,6 @@
 #include "cwf.h"
 
 // BUGS
-// - pre_request_baseline rewind invalidates response_sb if it was reallocated
 // - cwf_headers_set does not overwrite
 // - 404 is malformed, should have content-length 0
 
@@ -22,7 +21,6 @@
 // - host a real website
 // - cookies
 // - try auth?
-
 
 cwf_Response api_index(cwf_Request request)
 {
