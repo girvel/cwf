@@ -86,10 +86,8 @@ typedef struct cwf_StringView {
     size_t count;
 } cwf_StringView;
 
-// TODO don't use macros
-#define CWF_SB_APPEND_BUF(sb, buf, size) CWF_DA_APPEND_MANY(sb, buf, size)
-#define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
-
+void cwf_sb_append_null(cwf_StringBuilder *sb);
+void cwf_sb_append_buf(cwf_StringBuilder *sb, const char *buf, size_t size);
 void cwf_sb_append_sv(cwf_StringBuilder *sb, cwf_StringView sv);
 int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
     __attribute__ ((format(printf, 2, 3)));
@@ -343,6 +341,16 @@ bool cwf_sv_eq(cwf_StringView sv, const char *str)
     return strncmp(sv.items, str, len) == 0;
 }
 
+void cwf_sb_append_null(cwf_StringBuilder *sb)
+{
+    CWF_DA_APPEND_MANY(sb, "", 1);
+}
+
+void cwf_sb_append_buf(cwf_StringBuilder *sb, const char *buf, size_t size)
+{
+    CWF_DA_APPEND_MANY(sb, buf, size);
+}
+
 void cwf_sb_append_sv(cwf_StringBuilder *sb, cwf_StringView sv)
 {
     CWF_DA_APPEND_MANY(sb, sv.items, sv.count);
@@ -566,7 +574,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             }
         }
         cwf_sb_appendf(&response_sb, "HTTP/1.1 404\r\n");
-        CWF_SB_APPEND_NULL(&response_sb);
+        cwf_sb_append_null(&response_sb);
 
     found:
         printf("> RESPONSE\n" SV_FMT "\n", SV_ARG(response_sb));
