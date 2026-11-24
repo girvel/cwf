@@ -10,7 +10,7 @@
 #include <stdbool.h>
 
 // =================================================================================================
-// Utility functions
+// [SECTION] Utility functions
 // =================================================================================================
 
 typedef struct cwf_ArenaRegion cwf_ArenaRegion;
@@ -81,16 +81,18 @@ typedef struct cwf_StringBuilder {
     size_t count, capacity;
 } cwf_StringBuilder;
 
-#define CWF_SB_APPEND_BUF(sb, buf, size) CWF_DA_APPEND_MANY(sb, buf, size)
-#define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
-
-int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
-    __attribute__ ((format(printf, 2, 3)));
-
 typedef struct cwf_StringView {
     const char *items;
     size_t count;
 } cwf_StringView;
+
+// TODO don't use macros
+#define CWF_SB_APPEND_BUF(sb, buf, size) CWF_DA_APPEND_MANY(sb, buf, size)
+#define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
+
+void cwf_sb_append_sv(cwf_StringBuilder *sb, cwf_StringView sv);
+int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
+    __attribute__ ((format(printf, 2, 3)));
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count);
 cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim);
@@ -275,6 +277,11 @@ bool cwf_sv_eq(cwf_StringView sv, const char *str)
     return strncmp(sv.items, str, len) == 0;
 }
 
+void cwf_sb_append_sv(cwf_StringBuilder *sb, cwf_StringView sv)
+{
+    CWF_DA_APPEND_MANY(sb, sv.items, sv.count);
+}
+
 int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
 {
     va_list args;
@@ -335,7 +342,7 @@ char *cwf_sv_strdup(cwf_StringView sv)
 #endif // CWF_IMPLEMENTATION
 
 // =================================================================================================
-// API
+// [SECTION] API
 // =================================================================================================
 
 typedef struct cwf_Header {
@@ -352,7 +359,8 @@ typedef struct cwf_Request {
 } cwf_Request;
 
 typedef struct cwf_Response {
-    const char *body;
+    // May contain null terminators => cwf_StringView
+    cwf_StringView body;
     int code;
     cwf_Headers headers;
 } cwf_Response;
@@ -376,12 +384,12 @@ typedef struct cwf_App {
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
-void cwf_headers_set(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
-void cwf_headers_set_cstr(cwf_Headers *headers, const char *name, const char *value);
+void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
+void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
 const char *cwf_headers_get(cwf_Headers headers, const char *name);
 
 // =================================================================================================
-// Implementation
+// [SECTION] Implementation
 // =================================================================================================
 
 #ifdef CWF_IMPLEMENTATION
@@ -475,7 +483,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             key = cwf_sv_trim_space(key);
             sv = cwf_sv_trim_space(sv);
 
-            cwf_headers_set(&request.headers, key, value);
+            cwf_headers_set_sv(&request.headers, key, value);
         }
 
         response_sb.count = 0;
@@ -484,15 +492,14 @@ void cwf_app_run(cwf_App app, const char *address, int port)
                 cwf_Response response_data = e->handler(request);
                 cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
 
-                size_t content_length = strlen(response_data.body);
-                cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", content_length + 1);
+                cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", response_data.body.count);
                 
                 const char *content_type = cwf_headers_get(response_data.headers, "content-type");
                 if (content_type == NULL) content_type = "text/plain";
                 cwf_sb_appendf(&response_sb, "content-type: %s\r\n", content_type);
 
                 cwf_sb_appendf(&response_sb, "\r\n");
-                CWF_SB_APPEND_BUF(&response_sb, response_data.body, content_length + 1);
+                cwf_sb_append_sv(&response_sb, response_data.body);
                 goto found;
             }
         }
@@ -512,7 +519,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
     close(server_fd);
 }
 
-void cwf_headers_set(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
+void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
 {
     char *name_lower = cwf_alloc(name.count + 1);
     for (size_t i = 0; i < name.count; i++) name_lower[i] = tolower(name.items[i]);
@@ -521,9 +528,9 @@ void cwf_headers_set(cwf_Headers *headers, cwf_StringView name, cwf_StringView v
     CWF_DA_APPEND(headers, header);
 }
 
-void cwf_headers_set_cstr(cwf_Headers *headers, const char *name, const char *value)
+void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value)
 {
-    cwf_headers_set(headers, sv_cstr(name), sv_cstr(value));
+    cwf_headers_set_sv(headers, sv_cstr(name), sv_cstr(value));
 }
 
 const char *cwf_headers_get(cwf_Headers headers, const char *name)
