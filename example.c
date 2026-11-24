@@ -3,9 +3,9 @@
 #include "cwf.h"
 
 // FUTURE QUESTS
-// - serve a PNG file
-// - cwf_headers_set does not overwrite
+// - bug: cwf_headers_set does not overwrite
 // - redirect endpoint/ -> endpoint and back
+// - serve CSS
 // - serve static files from a directory
 // - path arguments
 // - query arguments
@@ -18,8 +18,12 @@ cwf_Response api_index(cwf_Request request)
     if (user_agent == NULL) user_agent = "unknown agent";
 
     cwf_Response response = {
-      .code = 200,
-      .body = sv_cstr(cwf_sprintf("<h1>Hello, %s!</h1>\r\n", user_agent)),
+        .code = 200,
+        .body = sv_cstr(cwf_sprintf(
+            "<html><head><title>CWF example</title></head>"
+            "<body><h1>Your user agent is: %s</h1></body></html>\r\n",
+            user_agent
+        )),
     };
 
     cwf_headers_set(&response.headers, "content-type", "text/html");
