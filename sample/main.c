@@ -1,16 +1,16 @@
 #include <stdio.h>
+#include <unistd.h>
 #define CWF_IMPLEMENTATION
-#include "cwf.h"
+#include "../cwf.h"
 
-// BUGS
+// ISSUES
 // - cwf_headers_set does not overwrite
 // - 404 is malformed, should have content-length 0
+// - telnet localhost 8000 & not typing would block other connections
 
 // QUESTS
 // - redirect endpoint/ -> endpoint and back
-// - serve CSS
 // - graceful shutdown
-// - telnet localhost 8000 & not typing would block other connections
 
 // MAYBE LATER
 // - serve static files from a directory
@@ -30,8 +30,15 @@ cwf_Response api_index(cwf_Request request)
     cwf_Response response = {
         .code = 200,
         .body = sv_cstr(cwf_sprintf(
-            "<html><head><title>CWF example</title></head>"
-            "<body><h1>Your user agent is: %s</h1></body></html>\r\n",
+            "<html>\n"
+            "<head>\n"
+            "  <title>CWF example</title>\n"
+            "  <link rel=\"stylesheet\" href=\"/simple.css\" />\n"
+            "</head>\n"
+            "<body>\n"
+            "  <p>Your user agent is: %s</p>\n"
+            "</body>\n"
+            "</html>\n",
             user_agent
         )),
     };
@@ -63,12 +70,31 @@ cwf_Response api_favicon_redirect(cwf_Request request)
     return cwf_response_found("/favicon.png");
 }
 
+cwf_Response api_simple_css(cwf_Request request)
+{
+    (void)request;
+    cwf_StringBuilder sb = {0};
+    if (!cwf_file_read("simple.css", &sb)) {
+        return (cwf_Response) { .code = 500 };
+    }
+
+    cwf_Response response = {
+        .code = 200,
+        .body = cwf_sv_from_sb(sb),
+    };
+    cwf_headers_set(&response.headers, "content-type", "text/css");
+    return response;
+}
+
 int main()
 {
+    chdir("sample");
+
     cwf_App app = {0};
     cwf_app_route(&app, "GET", "/", api_index);
     cwf_app_route(&app, "GET", "/favicon.png", api_favicon);
     cwf_app_route(&app, "GET", "/favicon.ico", api_favicon_redirect);
+    cwf_app_route(&app, "GET", "/simple.css", api_simple_css);
     cwf_app_run(app, "localhost", 8000);
     printf("Program finished.\n");
     return 0;
