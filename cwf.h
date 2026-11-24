@@ -326,15 +326,9 @@ cwf_StringView cwf_sv_trim_space_right(cwf_StringView sv)
 
 char *cwf_sv_strdup(cwf_StringView sv)
 {
-    char *result;
-    if (sv.items[sv.count - 1] == '\0') {
-        result = cwf_alloc(sv.count);
-        memcpy(result, sv.items, sv.count);
-    } else {
-        result = cwf_alloc(sv.count + 1);
-        memcpy(result, sv.items, sv.count);
-        result[sv.count] = '\0';
-    }
+    char *result = cwf_alloc(sv.count + 1);
+    memcpy(result, sv.items, sv.count);
+    result[sv.count] = '\0';
     return result;
 }
 
