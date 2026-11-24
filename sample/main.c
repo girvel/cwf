@@ -8,7 +8,6 @@
 
 // SIDE QUESTS
 // - redirect endpoint/ -> endpoint and back
-// - graceful shutdown
 
 // MAYBE LATER
 // - serve static files from a directory

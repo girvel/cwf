@@ -170,6 +170,8 @@ cwf_Response cwf_response_found(const char *uri);
 #include <assert.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <signal.h>
+#include <errno.h>
 
 cwf_ArenaRegion *_cwf_arena_region_new(size_t capacity)
 {
@@ -474,6 +476,14 @@ void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_A
     CWF_DA_APPEND(&app->_endpoints, e);
 }
 
+static volatile sig_atomic_t is_running = false;
+
+static void _handle_sigint(int signum)
+{
+    (void)signum;
+    is_running = false;
+}
+
 void cwf_app_run(cwf_App app, const char *address, int port)
 {
     CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
@@ -509,12 +519,22 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
     printf("Listening on %s:%i\n\n", address, port);
 
+    struct sigaction sa_prev;
+    struct sigaction sa = {
+        .sa_handler = _handle_sigint,
+        .sa_flags = 0,
+    };
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, &sa_prev);
+
     cwf_ArenaMark pre_request_baseline = cwf_arena_snapshot(&cwf_arena);
 
-    while (1) {
+    is_running = true;
+    while (is_running) {
         socklen_t addrlen = sizeof(address);
         int client_fd = accept(server_fd, (struct sockaddr *)&addr, &addrlen);
         if (client_fd < 0) {
+            if (errno == EINTR) continue;
             perror("accept failed");
             close(server_fd);
             exit(1);
@@ -587,6 +607,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
     }
 
     close(server_fd);
+    sigaction(SIGINT, &sa_prev, NULL);
 }
 
 void cwf_headers_push_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
