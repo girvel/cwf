@@ -100,6 +100,9 @@ cwf_StringView cwf_sv_trim_space_right(cwf_StringView sv);
 bool cwf_sv_eq(cwf_StringView sv, const char *str);
 char *cwf_sv_strdup(cwf_StringView sv);
 
+#define SV_FMT "%.*s"
+#define SV_ARG(sv) (int)(sv).count, (sv).items
+
 #ifdef CWF_IMPLEMENTATION
 #include <ctype.h>
 #include <assert.h>
@@ -473,7 +476,6 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             sv = cwf_sv_trim_space(sv);
 
             // TODO that's disgusting
-            // printf(SV_FMT " -> " SV_FMT, SV_ARG(key), SV_ARG(value);
             cwf_headers_set(&request.headers, cwf_sv_strdup(key), cwf_sv_strdup(value));
         }
 
@@ -513,8 +515,10 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
 void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value)
 {
-    char *name_lower = cwf_alloc(strlen(name) + 1);
+    size_t name_len = strlen(name);
+    char *name_lower = cwf_alloc(name_len + 1);
     for (size_t i = 0; name[i] != '\0'; i++) name_lower[i] = tolower(name[i]);
+    name_lower[name_len] = '\0';
     cwf_Header header = {name_lower, cwf_strdup(value)};
     CWF_DA_APPEND(headers, header);
 }
