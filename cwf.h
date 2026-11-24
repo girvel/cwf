@@ -47,6 +47,7 @@ void *cwf_alloc(size_t capacity);
 void *cwf_realloc(void *ptr, size_t prev_capacity, size_t next_capacity);
 void cwf_free(void *ptr);
 char *cwf_strdup(const char *source);
+char *cwf_sprintf(const char *fmt, ...) __attribute__ ((format(printf, 1, 2)));
 
 #define CWF_DA_RESERVE(da, min_capacity) do { \
     if ((min_capacity) >= (da)->capacity) { \
@@ -83,7 +84,8 @@ typedef struct cwf_StringBuilder {
 #define CWF_SB_APPEND_BUF(sb, buf, size) CWF_DA_APPEND_MANY(sb, buf, size)
 #define CWF_SB_APPEND_NULL(sb) CWF_DA_APPEND_MANY(sb, "", 1)
 
-int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...);
+int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
+    __attribute__ ((format(printf, 2, 3)));
 
 typedef struct cwf_StringView {
     const char *items;
@@ -212,6 +214,23 @@ char *cwf_strdup(const char *source)
     size_t len = strlen(source);
     char *result = cwf_alloc(len + 1);
     strcpy(result, source);
+    return result;
+}
+
+char *cwf_sprintf(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int n = vsnprintf(NULL, 0, fmt, args_copy);
+    va_end(args_copy);
+
+    char *result = cwf_alloc(n + 1);
+    vsnprintf(result, n + 1, fmt, args);
+
+    va_end(args);
     return result;
 }
 
@@ -453,6 +472,8 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             key = cwf_sv_trim_space(key);
             sv = cwf_sv_trim_space(sv);
 
+            // TODO that's disgusting
+            // printf(SV_FMT " -> " SV_FMT, SV_ARG(key), SV_ARG(value);
             cwf_headers_set(&request.headers, cwf_sv_strdup(key), cwf_sv_strdup(value));
         }
 
@@ -463,7 +484,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
                 cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
 
                 size_t content_length = strlen(response_data.body);
-                cwf_sb_appendf(&response_sb, "content-length: %d\r\n", content_length + 1);
+                cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", content_length + 1);
                 
                 const char *content_type = cwf_headers_get(response_data.headers, "content-type");
                 if (content_type == NULL) content_type = "text/plain";

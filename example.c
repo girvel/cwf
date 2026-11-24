@@ -11,14 +11,9 @@ cwf_Response api_get_hw(cwf_Request request)
     const char *user_agent = cwf_headers_get(request.headers, "user-agent");
     if (user_agent == NULL) user_agent = "unknown agent";
 
-    snprintf(
-        buffer, sizeof(buffer),
-        "<h1>Hello, %s!</h1>\r\n", user_agent
-    );
-
     cwf_Response response = {
       .code = 200,
-      .body = buffer,
+      .body = cwf_sprintf("<h1>Hello, %s!</h1>\r\n", user_agent),
     };
 
     cwf_headers_set(&response.headers, "content-type", "text/html");
