@@ -573,7 +573,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
                 goto found;
             }
         }
-        cwf_sb_appendf(&response_sb, "HTTP/1.1 404\r\n");
+        cwf_sb_appendf(&response_sb, "HTTP/1.1 404\r\ncontent-length: 0\r\n");
         cwf_sb_append_null(&response_sb);
 
     found:

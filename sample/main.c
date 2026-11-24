@@ -4,7 +4,6 @@
 #include "../cwf.h"
 
 // ISSUES
-// - 404 is malformed, should have content-length 0
 // - telnet localhost 8000 & not typing would block other connections
 
 // SIDE QUESTS
