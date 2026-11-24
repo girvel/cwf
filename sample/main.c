@@ -3,6 +3,15 @@
 #define CWF_IMPLEMENTATION
 #include "../cwf.h"
 
+// QUEST: chat-site
+// - registering
+//   - read body
+//   - handle form syntax
+// - basic auth
+// - getting messages
+// - displaying messages
+// - writing messages
+
 // MAYBE LATER
 // - telnet localhost 8000 & not typing would block other connections
 // - serve static files from a directory
@@ -10,12 +19,6 @@
 // - path arguments
 // - query arguments
 // - POST, JSON?
-// - do a chat site?
-//   - registering
-//   - basic auth
-//   - getting messages
-//   - displaying messages
-//   - writing messages
 // - cookies
 // - try auth?
 
@@ -44,42 +47,46 @@ cwf_Response api_index(cwf_Request request)
     return response;
 }
 
-cwf_Response api_favicon(cwf_Request request)
-{
-    (void)request;
-
-    cwf_StringBuilder sb = {0};
-    if (!cwf_file_read("favicon.png", &sb)) {
-        return (cwf_Response) { .code = 500 };
-    }
-
-    cwf_Response response = {
-        .code = 200,
-        .body = cwf_sv_from_sb(sb),
-    };
-    cwf_headers_push(&response.headers, "content-type", "image/png");
-    return response;
-}
-
 cwf_Response api_favicon_redirect(cwf_Request request)
 {
     (void)request;
     return cwf_response_found("/favicon.png");
 }
 
-cwf_Response api_simple_css(cwf_Request request)
+static inline cwf_Response serve_file(const char *path)
 {
-    (void)request;
     cwf_StringBuilder sb = {0};
-    if (!cwf_file_read("simple.css", &sb)) {
+    if (!cwf_file_read(path, &sb)) {
         return (cwf_Response) { .code = 500 };
     }
 
-    cwf_Response response = {
+    return (cwf_Response) {
         .code = 200,
         .body = cwf_sv_from_sb(sb),
     };
-    cwf_headers_push(&response.headers, "content-type", "text/css");
+}
+
+cwf_Response api_favicon(cwf_Request request)
+{
+    (void)request;
+    cwf_Response response = serve_file("favicon.png");
+    if (response.code == 200) cwf_headers_push(&response.headers, "content-type", "image/png");
+    return response;
+}
+
+cwf_Response api_simple_css(cwf_Request request)
+{
+    (void)request;
+    cwf_Response response = serve_file("simple.css");
+    if (response.code == 200) cwf_headers_push(&response.headers, "content-type", "text/css");
+    return response;
+}
+
+cwf_Response api_register(cwf_Request request)
+{
+    (void)request;
+    cwf_Response response = serve_file("register.html");
+    if (response.code == 200) cwf_headers_push(&response.headers, "content-type", "text/html");
     return response;
 }
 
@@ -90,6 +97,7 @@ int main()
 
     cwf_App app = {0};
     cwf_app_route(&app, "GET", "/", api_index);
+    cwf_app_route(&app, "GET", "/register", api_register);
     cwf_app_route(&app, "GET", "/favicon.png", api_favicon);
     cwf_app_route(&app, "GET", "/favicon.ico", api_favicon_redirect);
     cwf_app_route(&app, "GET", "/simple.css", api_simple_css);
