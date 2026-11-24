@@ -2,15 +2,27 @@
 #define CWF_IMPLEMENTATION
 #include "cwf.h"
 
-// FUTURE QUESTS
-// - bug: cwf_headers_set does not overwrite
+// BUGS
+// - pre_request_baseline rewind invalidates response_sb if it was reallocated
+// - cwf_headers_set does not overwrite
+// - 404 is malformed, should have content-length 0
+
+// QUESTS
 // - redirect endpoint/ -> endpoint and back
 // - serve CSS
+// - graceful shutdown
+// - telnet localhost 8000 & not typing would block other connections
+
+// MAYBE LATER
 // - serve static files from a directory
+// - sanitize ../../etc/passwd-like paths
 // - path arguments
 // - query arguments
 // - POST, JSON?
-// - Host a real website
+// - host a real website
+// - cookies
+// - try auth?
+
 
 cwf_Response api_index(cwf_Request request)
 {
