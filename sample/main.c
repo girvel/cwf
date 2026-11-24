@@ -3,13 +3,8 @@
 #define CWF_IMPLEMENTATION
 #include "../cwf.h"
 
-// ISSUES
-// - telnet localhost 8000 & not typing would block other connections
-
-// SIDE QUESTS
-// - redirect endpoint/ -> endpoint and back
-
 // MAYBE LATER
+// - telnet localhost 8000 & not typing would block other connections
 // - serve static files from a directory
 // - sanitize ../../etc/passwd-like paths
 // - path arguments

@@ -157,6 +157,7 @@ void cwf_app_run(cwf_App app, const char *address, int port);
 void cwf_headers_push(cwf_Headers *headers, const char *name, const char *value);
 void cwf_headers_push_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
 const char *cwf_headers_get(cwf_Headers headers, const char *name);
+cwf_Response cwf_response_moved_permanently(const char *uri);
 cwf_Response cwf_response_found(const char *uri);
 
 // =================================================================================================
@@ -557,7 +558,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
         cwf_StringView sv = cwf_sv_from_parts(buffer, bytes_read);
         cwf_StringView method = cwf_sv_chop_by_delim(&sv, ' ');
-        cwf_StringView address = cwf_sv_chop_by_delim(&sv, ' ');
+        cwf_StringView requested_address = cwf_sv_chop_by_delim(&sv, ' ');
         cwf_sv_chop_by_delim(&sv, '\n');
 
         cwf_Request request = {0};
@@ -575,26 +576,49 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         cwf_StringBuilder response_sb = {0};
         CWF_DA_RESERVE(&response_sb, 4096);
 
-        CWF_DA_FOREACH (_cwf_Endpoint, e, &app._endpoints) {
-            if (cwf_sv_eq(address, e->address) && cwf_sv_eq(method, e->method)) {
-                cwf_Response response_data = e->handler(request);
+        CWF_DA_FOREACH (_cwf_Endpoint, endpoint, &app._endpoints) {
+            if (!cwf_sv_eq(method, endpoint->method)) continue;
+
+            cwf_Response response_data;
+            if (cwf_sv_eq(requested_address, endpoint->address)) {
+                response_data = endpoint->handler(request);
                 const char *content_type = cwf_headers_get(response_data.headers, "content-type");
                 if (content_type == NULL) {
                     cwf_headers_push(&response_data.headers, "content-type", "text/plain");
                 }
-
-                cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
-                cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", response_data.body.count);
-                CWF_DA_FOREACH (cwf_Header, h, &response_data.headers) {
-                    cwf_sb_appendf(&response_sb, "%s: %s\r\n", h->name, h->value);
-                }
-                cwf_sb_appendf(&response_sb, "\r\n");
-                cwf_sb_append_sv(&response_sb, response_data.body);
-                goto found;
+                goto response_formed;
             }
+
+            size_t endpoint_address_len = strlen(endpoint->address);
+            if (endpoint->address[endpoint_address_len - 1] == '/'
+                && endpoint_address_len == requested_address.count + 1
+                && strncmp(endpoint->address, requested_address.items, requested_address.count) == 0
+            ) {
+                response_data = cwf_response_moved_permanently(endpoint->address);
+                goto response_formed;
+            }
+
+            if (requested_address.items[requested_address.count - 1] == '/'
+                && endpoint_address_len + 1 == requested_address.count
+                && strncmp(endpoint->address, requested_address.items, endpoint_address_len) == 0
+            ) {
+                response_data = cwf_response_moved_permanently(endpoint->address);
+                goto response_formed;
+            }
+
+            continue;
+
+        response_formed:
+            cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
+            cwf_sb_appendf(&response_sb, "content-length: %ld\r\n", response_data.body.count);
+            CWF_DA_FOREACH (cwf_Header, h, &response_data.headers) {
+                cwf_sb_appendf(&response_sb, "%s: %s\r\n", h->name, h->value);
+            }
+            cwf_sb_appendf(&response_sb, "\r\n");
+            cwf_sb_append_sv(&response_sb, response_data.body);
+            goto found;
         }
         cwf_sb_appendf(&response_sb, "HTTP/1.1 404\r\ncontent-length: 0\r\n");
-        cwf_sb_append_null(&response_sb);
 
     found:
         printf("> RESPONSE\n" SV_FMT "\n", SV_ARG(response_sb));
@@ -639,6 +663,18 @@ cwf_Response cwf_response_found(const char *uri)
     cwf_Response result = {
         .code = 302,
         .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Found</a>.\r\n", uri)),
+    };
+    
+    cwf_headers_push(&result.headers, "content-type", "text/html");
+    cwf_headers_push(&result.headers, "location", uri);
+    return result;
+}
+
+cwf_Response cwf_response_moved_permanently(const char *uri)
+{
+    cwf_Response result = {
+        .code = 301,
+        .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Moved Permanently</a>.\r\n", uri)),
     };
     
     cwf_headers_push(&result.headers, "content-type", "text/html");
