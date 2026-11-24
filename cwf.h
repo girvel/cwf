@@ -154,8 +154,8 @@ typedef struct cwf_App {
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler);
 void cwf_app_run(cwf_App app, const char *address, int port);
-void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value);
-void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
+void cwf_headers_push(cwf_Headers *headers, const char *name, const char *value);
+void cwf_headers_push_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value);
 const char *cwf_headers_get(cwf_Headers headers, const char *name);
 cwf_Response cwf_response_found(const char *uri);
 
@@ -549,7 +549,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
             key = cwf_sv_trim_space(key);
             sv = cwf_sv_trim_space(sv);
 
-            cwf_headers_set_sv(&request.headers, key, value);
+            cwf_headers_push_sv(&request.headers, key, value);
         }
 
         cwf_StringBuilder response_sb = {0};
@@ -560,7 +560,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
                 cwf_Response response_data = e->handler(request);
                 const char *content_type = cwf_headers_get(response_data.headers, "content-type");
                 if (content_type == NULL) {
-                    cwf_headers_set(&response_data.headers, "content-type", "text/plain");
+                    cwf_headers_push(&response_data.headers, "content-type", "text/plain");
                 }
 
                 cwf_sb_appendf(&response_sb, "HTTP/1.1 %d\r\n", response_data.code);
@@ -589,7 +589,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
     close(server_fd);
 }
 
-void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
+void cwf_headers_push_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
 {
     char *name_lower = cwf_alloc(name.count + 1);
     for (size_t i = 0; i < name.count; i++) name_lower[i] = tolower(name.items[i]);
@@ -598,9 +598,9 @@ void cwf_headers_set_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringVie
     CWF_DA_APPEND(headers, header);
 }
 
-void cwf_headers_set(cwf_Headers *headers, const char *name, const char *value)
+void cwf_headers_push(cwf_Headers *headers, const char *name, const char *value)
 {
-    cwf_headers_set_sv(headers, sv_cstr(name), sv_cstr(value));
+    cwf_headers_push_sv(headers, sv_cstr(name), sv_cstr(value));
 }
 
 const char *cwf_headers_get(cwf_Headers headers, const char *name)
@@ -620,8 +620,8 @@ cwf_Response cwf_response_found(const char *uri)
         .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Found</a>.\r\n", uri)),
     };
     
-    cwf_headers_set(&result.headers, "content-type", "text/html");
-    cwf_headers_set(&result.headers, "location", uri);
+    cwf_headers_push(&result.headers, "content-type", "text/html");
+    cwf_headers_push(&result.headers, "location", uri);
     return result;
 }
 

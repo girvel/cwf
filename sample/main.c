@@ -4,11 +4,10 @@
 #include "../cwf.h"
 
 // ISSUES
-// - cwf_headers_set does not overwrite
 // - 404 is malformed, should have content-length 0
 // - telnet localhost 8000 & not typing would block other connections
 
-// QUESTS
+// SIDE QUESTS
 // - redirect endpoint/ -> endpoint and back
 // - graceful shutdown
 
@@ -18,7 +17,12 @@
 // - path arguments
 // - query arguments
 // - POST, JSON?
-// - host a real website
+// - do a chat site?
+//   - registering
+//   - basic auth
+//   - getting messages
+//   - displaying messages
+//   - writing messages
 // - cookies
 // - try auth?
 
@@ -43,7 +47,7 @@ cwf_Response api_index(cwf_Request request)
         )),
     };
 
-    cwf_headers_set(&response.headers, "content-type", "text/html");
+    cwf_headers_push(&response.headers, "content-type", "text/html");
     return response;
 }
 
@@ -60,7 +64,7 @@ cwf_Response api_favicon(cwf_Request request)
         .code = 200,
         .body = cwf_sv_from_sb(sb),
     };
-    cwf_headers_set(&response.headers, "content-type", "image/png");
+    cwf_headers_push(&response.headers, "content-type", "image/png");
     return response;
 }
 
@@ -82,12 +86,13 @@ cwf_Response api_simple_css(cwf_Request request)
         .code = 200,
         .body = cwf_sv_from_sb(sb),
     };
-    cwf_headers_set(&response.headers, "content-type", "text/css");
+    cwf_headers_push(&response.headers, "content-type", "text/css");
     return response;
 }
 
 int main()
 {
+    // TODO only chdir if needed
     chdir("sample");
 
     cwf_App app = {0};
