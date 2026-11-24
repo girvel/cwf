@@ -12,11 +12,26 @@
 // Utility functions
 // =================================================================================================
 
+typedef void *(*cwf_Realloc)(void *, size_t);
+typedef void (*cwf_Free)(void *);
+
+typedef struct cwf_Allocator {
+    cwf_Realloc realloc;
+    cwf_Free free;
+} cwf_Allocator;
+
+extern const cwf_Allocator cwf_allocator_malloc;
+extern const cwf_Allocator cwf_allocator_arena;
+
+void cwf_allocator_set(cwf_Allocator value);
+void *cwf_realloc(void *ptr, size_t n);
+void cwf_free(void *ptr);
+
 #define CWF_DA_RESERVE(da, min_capacity) do { \
     if ((min_capacity) >= (da)->capacity) { \
         if ((da)->capacity == 0) (da)->capacity = 16; \
         while ((min_capacity) > (da)->capacity) (da)->capacity *= 2; \
-        (da)->items = realloc((da)->items, sizeof(*(da)->items) * (da)->capacity); \
+        (da)->items = cwf_realloc((da)->items, sizeof(*(da)->items) * (da)->capacity); \
     } \
 } while (0)
 
@@ -58,6 +73,25 @@ bool cwf_sv_eq(cwf_StringView sv, const char *str);
 
 #ifdef CWF_IMPLEMENTATION
 #include <ctype.h>
+
+const cwf_Allocator cwf_allocator_malloc = {realloc, free};
+const cwf_Allocator cwf_allocator_arena = {NULL, NULL};  // TODO arenas
+static cwf_Allocator cwf_allocator = cwf_allocator_malloc;
+
+void cwf_allocator_set(cwf_Allocator value)
+{
+    cwf_allocator = value;
+}
+
+void *cwf_realloc(void *ptr, size_t n)
+{
+    return cwf_allocator.realloc(ptr, n);
+}
+
+void cwf_free(void *ptr)
+{
+    return cwf_allocator.free(ptr);
+}
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count)
 {
