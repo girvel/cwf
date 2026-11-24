@@ -95,6 +95,7 @@ int cwf_sb_appendf(cwf_StringBuilder *sb, const char *fmt, ...)
     __attribute__ ((format(printf, 2, 3)));
 
 cwf_StringView cwf_sv_from_parts(const char *items, size_t count);
+cwf_StringView cwf_sv_from_sb(cwf_StringBuilder sb);
 cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim);
 cwf_StringView cwf_sv_trim_space(cwf_StringView sv);
 cwf_StringView cwf_sv_trim_space_left(cwf_StringView sv);
@@ -110,10 +111,15 @@ static inline cwf_StringView sv_cstr(const char *source)
     return (cwf_StringView) {source, strlen(source)};
 }
 
+bool cwf_file_read(const char *path, cwf_StringBuilder *sb);
+
+// todo join two implementation ifdef, separate section for utility implementation
 #ifdef CWF_IMPLEMENTATION
+#include <fcntl.h>
 #include <ctype.h>
 #include <assert.h>
 #include <stdio.h>
+#include <unistd.h>
 
 cwf_ArenaRegion *_cwf_arena_region_new(size_t capacity)
 {
@@ -252,6 +258,14 @@ cwf_StringView cwf_sv_from_parts(const char *items, size_t count)
     return result;
 }
 
+cwf_StringView cwf_sv_from_sb(cwf_StringBuilder sb)
+{
+    cwf_StringView result;
+    result.items = sb.items;
+    result.count = sb.count;
+    return result;
+}
+
 cwf_StringView cwf_sv_chop_by_delim(cwf_StringView *sv, char delim)
 {
     size_t i = 0;
@@ -339,6 +353,53 @@ char *cwf_sv_strdup(cwf_StringView sv)
     return result;
 }
 
+bool cwf_file_read(const char *path, cwf_StringBuilder *sb)
+{
+    bool result = true;
+
+    FILE *f = fopen(path, "rb");
+    size_t new_count = 0;
+    long long m = 0;
+    if (f == NULL) {
+        result = false;
+        goto defer;
+    }
+    if (fseek(f, 0, SEEK_END) < 0) {
+        result = false;
+        goto defer;
+    }
+#ifndef _WIN32
+    m = ftell(f);
+#else
+    m = _telli64(_fileno(f));
+#endif
+    if (m < 0) {
+        result = false;
+        goto defer;
+    }
+    if (fseek(f, 0, SEEK_SET) < 0) {
+        result = false;
+        goto defer;
+    }
+
+    new_count = sb->count + m;
+    if (new_count > sb->capacity) {
+        sb->items = cwf_realloc(sb->items, sb->capacity, new_count);
+        sb->capacity = new_count;
+    }
+
+    fread(sb->items + sb->count, m, 1, f);
+    if (ferror(f)) {
+        result = false;
+        goto defer;
+    }
+    sb->count = new_count;
+
+defer:
+    if (f) fclose(f);
+    return result;
+}
+
 #endif // CWF_IMPLEMENTATION
 
 // =================================================================================================
@@ -394,7 +455,6 @@ const char *cwf_headers_get(cwf_Headers headers, const char *name);
 
 #ifdef CWF_IMPLEMENTATION
 #include <arpa/inet.h>
-#include <unistd.h>
 
 void cwf_app_route(cwf_App *app, const char *method, const char *endpoint, cwf_ApiHandler handler)
 {
@@ -507,7 +567,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         CWF_SB_APPEND_NULL(&response_sb);
 
     found:
-        printf("> RESPONSE\n%s\n", response_sb.items);
+        printf("> RESPONSE\n" SV_FMT "\n", SV_ARG(response_sb));
         send(client_fd, response_sb.items, response_sb.count, 0);
 
     finish:

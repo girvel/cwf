@@ -1,7 +1,6 @@
 #include <stdio.h>
 #define CWF_IMPLEMENTATION
 #include "cwf.h"
-#include <fcntl.h>
 
 // FUTURE QUESTS
 // - serve a PNG file
@@ -30,15 +29,14 @@ cwf_Response api_favicon(cwf_Request request)
 {
     (void)request;
 
-    int fd = open("favicon.png", O_RDONLY);
-    char *buffer = cwf_alloc(256);
-    ssize_t bytes_read = read(fd, buffer, 256);
-    assert(bytes_read > 0);
-    close(fd);
+    cwf_StringBuilder sb = {0};
+    if (!cwf_file_read("favicon.png", &sb)) {
+        return (cwf_Response) { .code = 500 };
+    }
 
     cwf_Response response = {
         .code = 200,
-        .body = cwf_sv_from_parts(buffer, bytes_read),
+        .body = cwf_sv_from_sb(sb),
     };
     cwf_headers_set(&response.headers, "content-type", "image/png");
     return response;
