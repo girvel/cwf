@@ -2,6 +2,7 @@
 #include <unistd.h>
 #define CWF_IMPLEMENTATION
 #include "../cwf.h"
+#include "sqlite3.h" 
 
 // SIDE QUESTS
 
@@ -112,8 +113,28 @@ cwf_Response api_register(cwf_Request request)
 
 int main()
 {
-    // TODO only chdir if needed
-    chdir("sample");
+    sqlite3 *db;
+    if (sqlite3_open("db", &db)) {
+        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return 1;
+    }
+    printf("Opened SQLite DB.\n");
+
+    char *error = NULL;
+    if (sqlite3_exec(
+        db,
+        "CREATE TABLE IF NOT EXISTS users (\n"
+        "user TEXT NOT NULL PRIMARY KEY,\n"
+        "password TEXT NOT NULL\n"
+        ");",
+        NULL, NULL,
+        &error
+    ) != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", error);
+        sqlite3_close(db);
+        return 1;
+    }
 
     cwf_App app = {0};
     cwf_app_route(&app, "GET", "/", site_index);
