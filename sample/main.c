@@ -3,9 +3,12 @@
 #define CWF_IMPLEMENTATION
 #include "../cwf.h"
 
+// SIDE QUESTS
+// - enum for http response codes
+
 // QUEST: chat-site
 // - registering
-//   - handle form syntax
+//   - connect sqlite
 // - basic auth
 // - getting messages
 // - displaying messages
@@ -91,9 +94,21 @@ cwf_Response site_register(cwf_Request request)
 
 cwf_Response api_register(cwf_Request request)
 {
-    printf("|" SV_FMT "|\n", SV_ARG(request.body));
-    cwf_Response response = cwf_response_found("/");
-    return response;
+    cwf_StringTable form_data = {0};
+    if (!cwf_form_read(request.body, &form_data)) {
+        return (cwf_Response) {.code = 400};
+    }
+
+    const char *username = cwf_st_get(form_data, "username");
+    if (username == NULL) username = "<missing>";
+    const char *password = cwf_st_get(form_data, "password");
+    if (password == NULL) password = "<missing>";
+
+    printf("username: |%s| password: |%s|\n", username, password);
+
+    // TODO respond OK if username is not admin
+    // cwf_Response response = cwf_response_found("/");
+    return (cwf_Response) {.code = 204};
 }
 
 int main()

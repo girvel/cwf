@@ -49,17 +49,22 @@ void cwf_free(void *ptr);
 char *cwf_strdup(const char *source);
 char *cwf_sprintf(const char *fmt, ...) __attribute__ ((format(printf, 1, 2)));
 
-#define CWF_DA_RESERVE(da, min_capacity) do { \
-    if ((min_capacity) >= (da)->capacity) { \
-        size_t prev_capacity = (da)->capacity; \
-        if ((da)->capacity == 0) (da)->capacity = 16; \
-        while ((min_capacity) > (da)->capacity) (da)->capacity *= 2; \
+#define CWF_DA_RESERVE_EXACT(da, exact_capacity) do { \
+    if ((exact_capacity) >= (da)->capacity) { \
         (da)->items = cwf_realloc( \
             (da)->items, \
-            sizeof(*(da)->items) * prev_capacity, \
-            sizeof(*(da)->items) * (da)->capacity \
+            sizeof(*(da)->items) * (da)->capacity, \
+            sizeof(*(da)->items) * (exact_capacity) \
         ); \
+        (da)->capacity = (exact_capacity); \
     } \
+} while (0)
+
+#define CWF_DA_RESERVE(da, min_capacity) do { \
+    size_t exact_capacity = (da)->capacity; \
+    if (exact_capacity == 0) exact_capacity = 16; \
+    while ((min_capacity) > exact_capacity) exact_capacity *= 2; \
+    CWF_DA_RESERVE_EXACT((da), exact_capacity); \
 } while (0)
 
 #define CWF_DA_APPEND(da, item) do { \
@@ -112,16 +117,26 @@ static inline cwf_StringView sv_cstr(const char *source)
 bool cwf_file_read(const char *path, cwf_StringBuilder *sb);
 
 #define CWF_MAX2(A, B) ({ \
-    __typeof__((A)) MAX2_a = (A); \
-    __typeof__((B)) MAX2_b = (B); \
-    MAX2_a > MAX2_b ? MAX2_a : MAX2_b; \
+    __typeof__((A+B)) CWF_MAX2_a = (A), CWF_MAX2_b = (B); \
+    CWF_MAX2_a > CWF_MAX2_b ? CWF_MAX2_a : CWF_MAX2_b; \
 })
 
 #define CWF_MIN2(A, B) ({ \
-    __typeof__((A)) MIN2_a = (A); \
-    __typeof__((B)) MIN2_b = (B); \
-    MIN2_a < MIN2_b ? MIN2_a : MIN2_b; \
+    __typeof__((A+B)) CWF_MIN2_a = (A), CWF_MIN2_b = (B); \
+    CWF_MIN2_a < CWF_MIN2_b ? CWF_MIN2_a : CWF_MIN2_b; \
 })
+
+typedef struct cwf_StringPair {
+    char *key, *value;
+} cwf_StringPair;
+
+typedef struct cwf_StringTable {
+    cwf_StringPair *items;
+    size_t count, capacity;
+} cwf_StringTable;
+
+const char *cwf_st_get(cwf_StringTable table, const char *key);
+void cwf_st_set(cwf_StringTable *table, const char *key, const char *value);
 
 // =================================================================================================
 // [SECTION] API
@@ -172,6 +187,7 @@ void cwf_headers_push_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringVi
 const char *cwf_headers_get(cwf_Headers headers, const char *name);
 cwf_Response cwf_response_moved_permanently(const char *uri);
 cwf_Response cwf_response_found(const char *uri);
+bool cwf_form_read(cwf_StringView body, cwf_StringTable *result);
 
 // =================================================================================================
 // [SECTION] Utility implementation
@@ -476,6 +492,28 @@ defer:
     return result;
 }
 
+const char *cwf_st_get(cwf_StringTable table, const char *key)
+{
+    for (cwf_StringPair *pair = table.items; pair < table.items + table.count; pair++) {
+        if (strcmp(pair->key, key) == 0) return pair->value;
+    }
+    return NULL;
+}
+
+void cwf_st_set(cwf_StringTable *table, const char *key, const char *value)
+{
+    char *value_copy = cwf_strdup(value);
+    for (cwf_StringPair *pair = table->items; pair < table->items + table->count; pair++) {
+        if (strcmp(pair->key, key) == 0) {
+            pair->value = value_copy;
+            return;
+        }
+    }
+
+    cwf_StringPair new_pair = {cwf_strdup(key), value_copy};
+    CWF_DA_APPEND(table, new_pair);
+}
+
 // =================================================================================================
 // [SECTION] Implementation
 // =================================================================================================
@@ -654,7 +692,7 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 void cwf_headers_push_sv(cwf_Headers *headers, cwf_StringView name, cwf_StringView value)
 {
     char *name_lower = cwf_alloc(name.count + 1);
-    for (size_t i = 0; i < name.count; i++) name_lower[i] = tolower(name.items[i]);
+    for (size_t i = 0; i < name.count; i++) name_lower[i] = tolower((unsigned char)name.items[i]);
     name_lower[name.count] = '\0';
     cwf_Header header = {name_lower, cwf_sv_strdup(value)};
     CWF_DA_APPEND(headers, header);
@@ -697,6 +735,54 @@ cwf_Response cwf_response_moved_permanently(const char *uri)
     cwf_headers_push(&result.headers, "content-type", "text/html");
     cwf_headers_push(&result.headers, "location", uri);
     return result;
+}
+
+static unsigned char _cwf_from_hex(char ch)
+{
+    if (ch <= '9') return ch - '0';
+    if (ch <= 'F') return ch - 'A' + 0xA;
+    if (ch <= 'f') return ch - 'a' + 0xA;
+    return 0;
+}
+
+static bool _cwf_form_process_string(cwf_StringView str, char **result)
+{
+    cwf_StringBuilder sb = {0};
+    CWF_DA_RESERVE_EXACT(&sb, str.count + 1);
+    for (size_t i = 0; i < str.count; i++) {
+        switch (str.items[i]) {
+            case '+':
+                CWF_DA_APPEND(&sb, ' ');
+                break;
+            case '%': {
+                if (str.count - i <= 2) return false;
+                unsigned char c1 = _cwf_from_hex(str.items[++i]);
+                unsigned char c2 = _cwf_from_hex(str.items[++i]);
+                CWF_DA_APPEND(&sb, (c1 << 4) | c2);
+                break;
+            }
+            default:
+                CWF_DA_APPEND(&sb, str.items[i]);
+        }
+    }
+    cwf_sb_append_null(&sb);
+    *result = sb.items;
+    return true;
+}
+
+bool cwf_form_read(cwf_StringView body, cwf_StringTable *result)
+{
+    while (body.count > 0) {
+        cwf_StringView value = cwf_sv_chop_by_delim(&body, '&');
+        cwf_StringView key = cwf_sv_chop_by_delim(&value, '=');
+
+        char *value_processed, *key_processed;
+        if (!_cwf_form_process_string(value, &value_processed)) return false;
+        if (!_cwf_form_process_string(key, &key_processed)) return false;
+        
+        cwf_st_set(result, key_processed, value_processed);
+    }
+    return true;
 }
 
 #endif // CWF_IMPLEMENTATION
