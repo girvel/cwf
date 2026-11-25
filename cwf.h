@@ -142,6 +142,71 @@ void cwf_st_set(cwf_StringTable *table, const char *key, const char *value);
 // [SECTION] API
 // =================================================================================================
 
+typedef enum cwf_Code {
+    CWF_CODE_100_CONTINUE = 100,
+    CWF_CODE_101_SWITCHING_PROTOCOLS = 101,
+    CWF_CODE_102_PROCESSING = 102,
+    CWF_CODE_103_EARLY_HINTS = 103,
+    CWF_CODE_200_OK = 200,
+    CWF_CODE_201_CREATED = 201,
+    CWF_CODE_202_ACCEPTED = 202,
+    CWF_CODE_203_NON_AUTHORITATIVE_INFO = 203,
+    CWF_CODE_204_NO_CONTENT = 204,
+    CWF_CODE_205_RESET_CONTENT = 205,
+    CWF_CODE_206_PARTIAL_CONTENT = 206,
+    CWF_CODE_207_MULTI_STATUS = 207,
+    CWF_CODE_208_ALREADY_REPORTED = 208,
+    CWF_CODE_226_IM_USED = 226,
+    CWF_CODE_300_MULTIPLE_CHOICES = 300,
+    CWF_CODE_301_MOVED_PERMANENTLY = 301,
+    CWF_CODE_302_FOUND = 302,
+    CWF_CODE_303_SEE_OTHER = 303,
+    CWF_CODE_304_NOT_MODIFIED = 304,
+    CWF_CODE_305_USE_PROXY = 305,
+    CWF_CODE_307_TEMPORARY_REDIRECT = 307,
+    CWF_CODE_308_PERMANENT_REDIRECT = 308,
+    CWF_CODE_400_BAD_REQUEST = 400,
+    CWF_CODE_401_UNAUTHORIZED = 401,
+    CWF_CODE_402_PAYMENT_REQUIRED = 402,
+    CWF_CODE_403_FORBIDDEN = 403,
+    CWF_CODE_404_NOT_FOUND = 404,
+    CWF_CODE_405_METHOD_NOT_ALLOWED = 405,
+    CWF_CODE_406_NOT_ACCEPTABLE = 406,
+    CWF_CODE_407_PROXY_AUTH_REQUIRED = 407,
+    CWF_CODE_408_REQUEST_TIMEOUT = 408,
+    CWF_CODE_409_CONFLICT = 409,
+    CWF_CODE_410_GONE = 410,
+    CWF_CODE_411_LENGTH_REQUIRED = 411,
+    CWF_CODE_412_PRECONDITION_FAILED = 412,
+    CWF_CODE_413_REQUEST_ENTITY_TOO_LARGE = 413,
+    CWF_CODE_414_REQUEST_URI_TOO_LONG = 414,
+    CWF_CODE_415_UNSUPPORTED_MEDIA_TYPE = 415,
+    CWF_CODE_416_REQUESTED_RANGE_NOT_SATISFIABLE = 416,
+    CWF_CODE_417_EXPECTATION_FAILED = 417,
+    CWF_CODE_418_TEAPOT = 418,
+    CWF_CODE_421_MISDIRECTED_REQUEST = 421,
+    CWF_CODE_422_UNPROCESSABLE_ENTITY = 422,
+    CWF_CODE_423_LOCKED = 423,
+    CWF_CODE_424_FAILED_DEPENDENCY = 424,
+    CWF_CODE_425_TOO_EARLY = 425,
+    CWF_CODE_426_UPGRADE_REQUIRED = 426,
+    CWF_CODE_428_PRECONDITION_REQUIRED = 428,
+    CWF_CODE_429_TOO_MANY_REQUESTS = 429,
+    CWF_CODE_431_REQUEST_HEADER_FIELDS_TOO_LARGE = 431,
+    CWF_CODE_451_UNAVAILABLE_FOR_LEGAL_REASONS = 451,
+    CWF_CODE_500_INTERNAL_SERVER_ERROR = 500,
+    CWF_CODE_501_NOT_IMPLEMENTED = 501,
+    CWF_CODE_502_BAD_GATEWAY = 502,
+    CWF_CODE_503_SERVICE_UNAVAILABLE = 503,
+    CWF_CODE_504_GATEWAY_TIMEOUT = 504,
+    CWF_CODE_505_HTTPVERSION_NOT_SUPPORTED = 505,
+    CWF_CODE_506_VARIANT_ALSO_NEGOTIATES = 506,
+    CWF_CODE_507_INSUFFICIENT_STORAGE = 507,
+    CWF_CODE_508_LOOP_DETECTED = 508,
+    CWF_CODE_510_NOT_EXTENDED = 510,
+    CWF_CODE_511_NETWORK_AUTHENTICATION_REQUIRED = 511,
+} cwf_Code;
+
 typedef struct cwf_Header {
     const char *name, *value;
 } cwf_Header;
@@ -160,7 +225,7 @@ typedef struct cwf_Response {
     // May contain null terminators => cwf_StringView
     cwf_Headers headers;
     cwf_StringView body;
-    int code;
+    cwf_Code code;
 } cwf_Response;
 
 typedef cwf_Response (*cwf_ApiHandler)(cwf_Request);
@@ -713,11 +778,11 @@ const char *cwf_headers_get(cwf_Headers headers, const char *name)
     return NULL;
 }
 
-cwf_Response cwf_response_found(const char *uri)
+cwf_Response cwf_response_moved_permanently(const char *uri)
 {
     cwf_Response result = {
-        .code = 302,
-        .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Found</a>.\r\n", uri)),
+        .code = CWF_CODE_301_MOVED_PERMANENTLY,
+        .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Moved Permanently</a>.\r\n", uri)),
     };
     
     cwf_headers_push(&result.headers, "content-type", "text/html");
@@ -725,11 +790,11 @@ cwf_Response cwf_response_found(const char *uri)
     return result;
 }
 
-cwf_Response cwf_response_moved_permanently(const char *uri)
+cwf_Response cwf_response_found(const char *uri)
 {
     cwf_Response result = {
-        .code = 301,
-        .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Moved Permanently</a>.\r\n", uri)),
+        .code = CWF_CODE_302_FOUND,
+        .body = sv_cstr(cwf_sprintf("<a href=\"%s\">Found</a>.\r\n", uri)),
     };
     
     cwf_headers_push(&result.headers, "content-type", "text/html");

@@ -4,7 +4,6 @@
 #include "../cwf.h"
 
 // SIDE QUESTS
-// - enum for http response codes
 
 // QUEST: chat-site
 // - registering
@@ -30,7 +29,7 @@ cwf_Response site_index(cwf_Request request)
     if (user_agent == NULL) user_agent = "unknown agent";
 
     cwf_Response response = {
-        .code = 200,
+        .code = CWF_CODE_200_OK,
         .body = sv_cstr(cwf_sprintf(
             "<html>\n"
             "<head>\n"
@@ -59,11 +58,11 @@ static inline cwf_Response serve_file(const char *path)
 {
     cwf_StringBuilder sb = {0};
     if (!cwf_file_read(path, &sb)) {
-        return (cwf_Response) { .code = 500 };
+        return (cwf_Response) { .code = CWF_CODE_500_INTERNAL_SERVER_ERROR };
     }
 
     return (cwf_Response) {
-        .code = 200,
+        .code = CWF_CODE_200_OK,
         .body = cwf_sv_from_sb(sb),
     };
 }
@@ -96,7 +95,7 @@ cwf_Response api_register(cwf_Request request)
 {
     cwf_StringTable form_data = {0};
     if (!cwf_form_read(request.body, &form_data)) {
-        return (cwf_Response) {.code = 400};
+        return (cwf_Response) {.code = CWF_CODE_400_BAD_REQUEST};
     }
 
     const char *username = cwf_st_get(form_data, "username");
@@ -108,7 +107,7 @@ cwf_Response api_register(cwf_Request request)
 
     // TODO respond OK if username is not admin
     // cwf_Response response = cwf_response_found("/");
-    return (cwf_Response) {.code = 204};
+    return (cwf_Response) {.code = CWF_CODE_204_NO_CONTENT};
 }
 
 int main()
