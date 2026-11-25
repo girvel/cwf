@@ -111,6 +111,18 @@ static inline cwf_StringView sv_cstr(const char *source)
 
 bool cwf_file_read(const char *path, cwf_StringBuilder *sb);
 
+#define CWF_MAX2(A, B) ({ \
+    __typeof__((A)) MAX2_a = (A); \
+    __typeof__((B)) MAX2_b = (B); \
+    MAX2_a > MAX2_b ? MAX2_a : MAX2_b; \
+})
+
+#define CWF_MIN2(A, B) ({ \
+    __typeof__((A)) MIN2_a = (A); \
+    __typeof__((B)) MIN2_b = (B); \
+    MIN2_a < MIN2_b ? MIN2_a : MIN2_b; \
+})
+
 // =================================================================================================
 // [SECTION] API
 // =================================================================================================
@@ -126,13 +138,14 @@ typedef struct cwf_Headers {
 
 typedef struct cwf_Request {
     cwf_Headers headers;
+    cwf_StringView body;
 } cwf_Request;
 
 typedef struct cwf_Response {
     // May contain null terminators => cwf_StringView
+    cwf_Headers headers;
     cwf_StringView body;
     int code;
-    cwf_Headers headers;
 } cwf_Response;
 
 typedef cwf_Response (*cwf_ApiHandler)(cwf_Request);
@@ -555,6 +568,9 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
         buffer[bytes_read] = '\0';
         printf("> REQUEST\n%s", buffer);
+        if (buffer[bytes_read - 1] != '\n') {
+            printf("\n");
+        }
 
         cwf_StringView sv = cwf_sv_from_parts(buffer, bytes_read);
         cwf_StringView method = cwf_sv_chop_by_delim(&sv, ' ');
@@ -563,15 +579,12 @@ void cwf_app_run(cwf_App app, const char *address, int port)
 
         cwf_Request request = {0};
         while (sv.count > 0) {
-            cwf_StringView value = cwf_sv_chop_by_delim(&sv, '\n');
-            cwf_StringView key = cwf_sv_chop_by_delim(&value, ':');
-
-            value = cwf_sv_trim_space(value);
-            key = cwf_sv_trim_space(key);
-            sv = cwf_sv_trim_space(sv);
-
+            cwf_StringView value = cwf_sv_trim_space(cwf_sv_chop_by_delim(&sv, '\n'));
+            if (value.count == 0) break;
+            cwf_StringView key = cwf_sv_trim_space(cwf_sv_chop_by_delim(&value, ':'));
             cwf_headers_push_sv(&request.headers, key, value);
         }
+        request.body = sv;
 
         cwf_StringBuilder response_sb = {0};
         CWF_DA_RESERVE(&response_sb, 4096);
@@ -620,8 +633,12 @@ void cwf_app_run(cwf_App app, const char *address, int port)
         }
         cwf_sb_appendf(&response_sb, "HTTP/1.1 404\r\ncontent-length: 0\r\n");
 
+        cwf_StringView response_cropped;
     found:
-        printf("> RESPONSE\n" SV_FMT "\n", SV_ARG(response_sb));
+        response_cropped = cwf_sv_from_parts(
+            response_sb.items, CWF_MIN2(response_sb.count, 1024)
+        );
+        printf("> RESPONSE\n" SV_FMT "\n", SV_ARG(response_cropped));
         send(client_fd, response_sb.items, response_sb.count, 0);
 
     finish:

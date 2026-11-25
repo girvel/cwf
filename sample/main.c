@@ -5,7 +5,6 @@
 
 // QUEST: chat-site
 // - registering
-//   - read body
 //   - handle form syntax
 // - basic auth
 // - getting messages
@@ -22,7 +21,7 @@
 // - cookies
 // - try auth?
 
-cwf_Response api_index(cwf_Request request)
+cwf_Response site_index(cwf_Request request)
 {
     const char *user_agent = cwf_headers_get(request.headers, "user-agent");
     if (user_agent == NULL) user_agent = "unknown agent";
@@ -47,7 +46,7 @@ cwf_Response api_index(cwf_Request request)
     return response;
 }
 
-cwf_Response api_favicon_redirect(cwf_Request request)
+cwf_Response site_favicon_redirect(cwf_Request request)
 {
     (void)request;
     return cwf_response_found("/favicon.png");
@@ -66,7 +65,7 @@ static inline cwf_Response serve_file(const char *path)
     };
 }
 
-cwf_Response api_favicon(cwf_Request request)
+cwf_Response site_favicon(cwf_Request request)
 {
     (void)request;
     cwf_Response response = serve_file("favicon.png");
@@ -74,7 +73,7 @@ cwf_Response api_favicon(cwf_Request request)
     return response;
 }
 
-cwf_Response api_simple_css(cwf_Request request)
+cwf_Response site_simple_css(cwf_Request request)
 {
     (void)request;
     cwf_Response response = serve_file("simple.css");
@@ -82,11 +81,18 @@ cwf_Response api_simple_css(cwf_Request request)
     return response;
 }
 
-cwf_Response api_register(cwf_Request request)
+cwf_Response site_register(cwf_Request request)
 {
     (void)request;
     cwf_Response response = serve_file("register.html");
     if (response.code == 200) cwf_headers_push(&response.headers, "content-type", "text/html");
+    return response;
+}
+
+cwf_Response api_register(cwf_Request request)
+{
+    printf("|" SV_FMT "|\n", SV_ARG(request.body));
+    cwf_Response response = cwf_response_found("/");
     return response;
 }
 
@@ -96,11 +102,12 @@ int main()
     chdir("sample");
 
     cwf_App app = {0};
-    cwf_app_route(&app, "GET", "/", api_index);
-    cwf_app_route(&app, "GET", "/register", api_register);
-    cwf_app_route(&app, "GET", "/favicon.png", api_favicon);
-    cwf_app_route(&app, "GET", "/favicon.ico", api_favicon_redirect);
-    cwf_app_route(&app, "GET", "/simple.css", api_simple_css);
+    cwf_app_route(&app, "GET", "/", site_index);
+    cwf_app_route(&app, "GET", "/register", site_register);
+    cwf_app_route(&app, "GET", "/favicon.png", site_favicon);
+    cwf_app_route(&app, "GET", "/favicon.ico", site_favicon_redirect);
+    cwf_app_route(&app, "GET", "/simple.css", site_simple_css);
+    cwf_app_route(&app, "POST", "/api/register", api_register);
     cwf_app_run(app, "localhost", 8000);
     printf("Program finished.\n");
     return 0;
