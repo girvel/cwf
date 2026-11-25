@@ -111,9 +111,20 @@ cwf_Response api_register(cwf_Request request)
     return (cwf_Response) {.code = CWF_CODE_204_NO_CONTENT};
 }
 
+sqlite3 *db;
+char *db_error = NULL;
+
+static inline void must(int sqlite_return)
+{
+    if (sqlite_return == SQLITE_OK) return;
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fprintf(stderr, "%s\n", sqlite3_errstr(sqlite_return));
+    sqlite3_close(db);
+    exit(1);
+}
+
 int main()
 {
-    sqlite3 *db;
     if (sqlite3_open("db", &db)) {
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
@@ -125,8 +136,8 @@ int main()
     if (sqlite3_exec(
         db,
         "CREATE TABLE IF NOT EXISTS users (\n"
-        "user TEXT NOT NULL PRIMARY KEY,\n"
-        "password TEXT NOT NULL\n"
+        "  user TEXT NOT NULL PRIMARY KEY,\n"
+        "  password TEXT NOT NULL\n"
         ");",
         NULL, NULL,
         &error
@@ -134,6 +145,25 @@ int main()
         fprintf(stderr, "SQL error: %s\n", error);
         sqlite3_close(db);
         return 1;
+    }
+
+    {
+        sqlite3_stmt *statement;
+        must(sqlite3_prepare_v2(
+            db, "SELECT user, password FROM users", -1,
+            &statement, NULL
+        ));
+
+        while (1) {
+            int step_rc = sqlite3_step(statement);
+            if (step_rc == SQLITE_DONE) break;
+            if (step_rc != SQLITE_ROW) must(step_rc);
+            const unsigned char *username = sqlite3_column_text(statement, 0);
+            const unsigned char *password = sqlite3_column_text(statement, 0);
+            printf("username: |%s| password: |%s|\n", username, password);
+        }
+
+        must(sqlite3_finalize(statement));
     }
 
     cwf_App app = {0};
