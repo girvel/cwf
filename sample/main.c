@@ -8,7 +8,7 @@
 
 // QUEST: chat-site
 // - registering
-//   - connect sqlite
+//   - check for account already existing
 // - basic auth
 // - getting messages
 // - displaying messages
@@ -92,6 +92,9 @@ cwf_Response site_register(cwf_Request request)
     return response;
 }
 
+sqlite3 *db;
+char *db_error = NULL;
+
 cwf_Response api_register(cwf_Request request)
 {
     cwf_StringTable form_data = {0};
@@ -100,19 +103,38 @@ cwf_Response api_register(cwf_Request request)
     }
 
     const char *username = cwf_st_get(form_data, "username");
-    if (username == NULL) username = "<missing>";
+    if (username == NULL) return (cwf_Response) {.code = CWF_CODE_400_BAD_REQUEST};
     const char *password = cwf_st_get(form_data, "password");
-    if (password == NULL) password = "<missing>";
+    if (password == NULL) return (cwf_Response) {.code = CWF_CODE_400_BAD_REQUEST};
 
-    printf("username: |%s| password: |%s|\n", username, password);
+    // TODO init & reuse it
+    sqlite3_stmt *existence_statement;
+    if (sqlite3_prepare_v2(
+      db, "SELECT EXISTS(SELECT * FROM users WHERE user = ?)", -1,
+      &existence_statement, NULL
+    ) != SQLITE_OK) {
+        return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR};
+    }
+    
+    if (sqlite3_bind_text(existence_statement, 1, username, -1, SQLITE_STATIC) != SQLITE_OK) {
+        return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR};
+    }
 
-    // TODO respond OK if username is not admin
-    // cwf_Response response = cwf_response_found("/");
-    return (cwf_Response) {.code = CWF_CODE_204_NO_CONTENT};
+    if (sqlite3_step(existence_statement) != SQLITE_ROW) {
+        return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR};
+    }
+
+    cwf_Response result;
+    int user_already_exists = sqlite3_column_int(existence_statement, 0);
+    if (user_already_exists) {
+        result = (cwf_Response) {.code = CWF_CODE_409_CONFLICT};
+    } else {
+        result = cwf_response_found("/");
+    }
+
+    sqlite3_finalize(existence_statement);
+    return result;
 }
-
-sqlite3 *db;
-char *db_error = NULL;
 
 static inline void must(int sqlite_return)
 {
