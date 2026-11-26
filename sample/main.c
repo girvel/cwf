@@ -181,21 +181,21 @@ int main()
 
     {
         sqlite3_stmt *statement;
-        must(sqlite3_prepare_v2(
+        assert(sqlite3_prepare_v2(
             db, "SELECT user, password FROM users", -1,
             &statement, NULL
-        ));
+        ) == SQLITE_OK);
 
         while (1) {
             int step_rc = sqlite3_step(statement);
             if (step_rc == SQLITE_DONE) break;
-            if (step_rc != SQLITE_ROW) must(step_rc);
+            assert(step_rc == SQLITE_ROW);
             const unsigned char *username = sqlite3_column_text(statement, 0);
-            const unsigned char *password = sqlite3_column_text(statement, 0);
+            const unsigned char *password = sqlite3_column_text(statement, 1);
             printf("username: |%s| password: |%s|\n", username, password);
         }
 
-        must(sqlite3_finalize(statement));
+        assert(sqlite3_finalize(statement) == SQLITE_OK);
     }
 
     cwf_App app = {0};
