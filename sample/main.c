@@ -95,6 +95,13 @@ cwf_Response site_register(cwf_Request request)
 sqlite3 *db;
 char *db_error = NULL;
 
+#define SQL_FAIL(rc) do { \
+    int SQL_FAIL_rc = (rc); \
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db)); \
+    fprintf(stderr, "%s\n", sqlite3_errstr(SQL_FAIL_rc)); \
+    return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR}; \
+} while (0)
+
 cwf_Response api_register(cwf_Request request)
 {
     cwf_StringTable form_data = {0};
@@ -109,40 +116,43 @@ cwf_Response api_register(cwf_Request request)
 
     // TODO init & reuse it
     sqlite3_stmt *existence_statement;
-    if (sqlite3_prepare_v2(
+    int rc;
+
+    rc = sqlite3_prepare_v2(
       db, "SELECT EXISTS(SELECT * FROM users WHERE user = ?)", -1,
       &existence_statement, NULL
-    ) != SQLITE_OK) {
-        return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR};
-    }
+    );
+    if (rc != SQLITE_OK) SQL_FAIL(rc);
     
-    if (sqlite3_bind_text(existence_statement, 1, username, -1, SQLITE_STATIC) != SQLITE_OK) {
-        return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR};
-    }
+    rc = sqlite3_bind_text(existence_statement, 1, username, -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) SQL_FAIL(rc);
 
-    if (sqlite3_step(existence_statement) != SQLITE_ROW) {
-        return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR};
-    }
+    rc = sqlite3_step(existence_statement);
+    if (rc != SQLITE_ROW) SQL_FAIL(rc);
 
-    cwf_Response result;
     int user_already_exists = sqlite3_column_int(existence_statement, 0);
-    if (user_already_exists) {
-        result = (cwf_Response) {.code = CWF_CODE_409_CONFLICT};
-    } else {
-        result = cwf_response_found("/");
-    }
-
     sqlite3_finalize(existence_statement);
-    return result;
-}
+    if (user_already_exists) return (cwf_Response) {.code = CWF_CODE_409_CONFLICT};
 
-static inline void must(int sqlite_return)
-{
-    if (sqlite_return == SQLITE_OK) return;
-    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-    fprintf(stderr, "%s\n", sqlite3_errstr(sqlite_return));
-    sqlite3_close(db);
-    exit(1);
+    sqlite3_stmt *insert_statement;
+
+    // TODO fix the leak on SQL_FAIL
+    rc = sqlite3_prepare_v2(
+        db, "INSERT INTO users (user, password) VALUES (?, ?)", -1,
+        &insert_statement, NULL
+    );
+    if (rc != SQLITE_OK) SQL_FAIL(rc);
+
+    rc = sqlite3_bind_text(insert_statement, 1, username, -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) SQL_FAIL(rc);
+
+    rc = sqlite3_bind_text(insert_statement, 2, password, -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) SQL_FAIL(rc);
+
+    rc = sqlite3_step(insert_statement);
+    if (rc != SQLITE_DONE) SQL_FAIL(rc);
+
+    return cwf_response_found("/");
 }
 
 int main()
