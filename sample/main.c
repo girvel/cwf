@@ -8,7 +8,6 @@
 
 // QUEST: chat-site
 // - registering
-//   - check for account already existing
 // - basic auth
 // - getting messages
 // - displaying messages
@@ -102,6 +101,24 @@ char *db_error = NULL;
     return (cwf_Response) {.code = CWF_CODE_500_INTERNAL_SERVER_ERROR}; \
 } while (0)
 
+static sqlite3_stmt *user_exists = NULL, *user_insert = NULL;
+
+void api_register_init()
+{
+    int rc;
+    rc = sqlite3_prepare_v2(
+      db, "SELECT EXISTS(SELECT * FROM users WHERE user = ?)", -1,
+      &user_exists, NULL
+    );
+    assert(rc == SQLITE_OK);
+
+    rc = sqlite3_prepare_v2(
+        db, "INSERT INTO users (user, password) VALUES (?, ?)", -1,
+        &user_insert, NULL
+    );
+    assert(rc == SQLITE_OK);
+}
+
 cwf_Response api_register(cwf_Request request)
 {
     cwf_StringTable form_data = {0};
@@ -114,42 +131,26 @@ cwf_Response api_register(cwf_Request request)
     const char *password = cwf_st_get(form_data, "password");
     if (password == NULL) return (cwf_Response) {.code = CWF_CODE_400_BAD_REQUEST};
 
-    // TODO init & reuse it
-    sqlite3_stmt *existence_statement;
     int rc;
-
-    rc = sqlite3_prepare_v2(
-      db, "SELECT EXISTS(SELECT * FROM users WHERE user = ?)", -1,
-      &existence_statement, NULL
-    );
-    if (rc != SQLITE_OK) SQL_FAIL(rc);
+    sqlite3_reset(user_exists);
+    sqlite3_reset(user_insert);
     
-    rc = sqlite3_bind_text(existence_statement, 1, username, -1, SQLITE_TRANSIENT);
+    rc = sqlite3_bind_text(user_exists, 1, username, -1, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) SQL_FAIL(rc);
-
-    rc = sqlite3_step(existence_statement);
+    rc = sqlite3_step(user_exists);
     if (rc != SQLITE_ROW) SQL_FAIL(rc);
 
-    int user_already_exists = sqlite3_column_int(existence_statement, 0);
-    sqlite3_finalize(existence_statement);
+    int user_already_exists = sqlite3_column_int(user_exists, 0);
+    sqlite3_finalize(user_exists);
     if (user_already_exists) return (cwf_Response) {.code = CWF_CODE_409_CONFLICT};
 
-    sqlite3_stmt *insert_statement;
-
-    // TODO fix the leak on SQL_FAIL
-    rc = sqlite3_prepare_v2(
-        db, "INSERT INTO users (user, password) VALUES (?, ?)", -1,
-        &insert_statement, NULL
-    );
+    rc = sqlite3_bind_text(user_insert, 1, username, -1, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) SQL_FAIL(rc);
 
-    rc = sqlite3_bind_text(insert_statement, 1, username, -1, SQLITE_TRANSIENT);
+    rc = sqlite3_bind_text(user_insert, 2, password, -1, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) SQL_FAIL(rc);
 
-    rc = sqlite3_bind_text(insert_statement, 2, password, -1, SQLITE_TRANSIENT);
-    if (rc != SQLITE_OK) SQL_FAIL(rc);
-
-    rc = sqlite3_step(insert_statement);
+    rc = sqlite3_step(user_insert);
     if (rc != SQLITE_DONE) SQL_FAIL(rc);
 
     return cwf_response_found("/");
@@ -204,7 +205,9 @@ int main()
     cwf_app_route(&app, "GET", "/favicon.png", site_favicon);
     cwf_app_route(&app, "GET", "/favicon.ico", site_favicon_redirect);
     cwf_app_route(&app, "GET", "/simple.css", site_simple_css);
-    cwf_app_route(&app, "POST", "/api/register", api_register);
+    cwf_app_route(&app, "POST", "/api/register", api_register); api_register_init();
+
+    // TODO fix the leak on SQL_FAIL
     cwf_app_run(app, "localhost", 8000);
     printf("Program finished.\n");
     return 0;
